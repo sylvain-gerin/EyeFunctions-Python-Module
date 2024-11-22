@@ -2,7 +2,6 @@
 
 If you encounter bugs of have any questions regarding this module, you can write an email to Sylvain Gerin: sylvain.gerin@uclouvain.be.
 
-
 dependencies: matplotlib.pyplot, scipy.signal, math, csv
 """
 import matplotlib.pyplot as plt
@@ -97,24 +96,24 @@ def stringToFloat(dataSet, zeroIsNan=False):
             thisTrialFloated = []
             for thisFrame in range(len(thisTrial)):
                 try:
-                    # float(thisTrial[thisFrame])
-                    thisTrialFloated += [float(thisTrial[thisFrame])]
+                    if float(thisTrial[thisFrame]) == float(0) and zeroIsNan==True:
+                        thisTrialFloated[thisFrame] = float('nan')
+                    else:
+                        thisTrialFloated += [float(thisTrial[thisFrame])]                   
                 except:
                     thisTrialFloated += [float('nan')]
-                if zeroIsNan == True:
-                    if float(thisTrial[thisFrame]) == float(0):
-                        thisTrialFloated[thisFrame] = float('nan')
             floatedDataset += [thisTrialFloated]
     
     elif nbOfLevels == 1:
         for thisFrame in range(len(dataSet)):
             try:
-                floatedDataset += [float(dataSet[thisFrame])]
+                if float(dataSet[thisFrame]) == float(0) and zeroIsNan == True:
+                    floatedDataset[thisFrame] = float('nan')
+                else:
+                    floatedDataset += [float(dataSet[thisFrame])]    
             except:
                 floatedDataset += [float('nan')]
-            if zeroIsNan == True:
-                if float(dataSet[thisFrame]) == float(0):
-                    floatedDataset[thisFrame] = float('nan')
+                
     return floatedDataset
 
 def isOutlier(list1D, maxSD):
