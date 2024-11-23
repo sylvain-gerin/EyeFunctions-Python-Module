@@ -30,7 +30,11 @@ def mean(list1D):
     """ return the mean of a 1D list of float or integers. Omit Nan"""
     list1D = [i for i in list1D if str(i) != 'nan']
     total = sum(list1D)
-    meanValue = total/len(list1D)
+    try:
+        meanValue = total/len(list1D)
+    except:
+        meanValue = float('nan')
+    
     return meanValue
 
 def median(list1D):
