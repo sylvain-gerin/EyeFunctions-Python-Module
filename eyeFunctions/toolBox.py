@@ -1,9 +1,8 @@
-""" this module contains a series of functions that are useful when handling with eye-tracking data, but also when handling with lists in general.
-
-If you encounter bugs of have any questions regarding this module, you can write an email to Sylvain Gerin: sylvain.gerin@uclouvain.be.
-
-dependencies: matplotlib.pyplot, scipy.signal, math, csv
+""" this module provides a series of functions used to handle and operate on python lists of various dimensions
+Dependencies: matplotlib.pyplot, scipy.signal, math, csv
+Author: Sylvain Gerin, sylvain.gerin@uclouvain.be 
 """
+
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from math import atan2, degrees
@@ -17,22 +16,25 @@ def unpack(list2D):
     return unpackedList
 
 def loadFile(fileName, delimiter='\t'):
+    """ open a file with csv.reader using a chosen delimiter
+    arguments:
+    fileName -- the name of the file to open
+    delimiter -- the column separator. Default '\t'
+    """
     with open(fileName, newline ='') as file:
         data = csv.reader(file, delimiter=delimiter)
         data = list(data)
     return data
 
 def mean(list1D):
-    """ Compute the mean of a list of values."""
-    total = 0.0
-    for i in list1D:
-        if str(i) != 'nan':
-            total += i
+    """ return the mean of a 1D list of float or integers. Omit Nan"""
+    list1D = [i for i in list1D if str(i) != 'nan']
+    total = sum(list1D)
     meanValue = total/len(list1D)
-    return(meanValue)
+    return meanValue
 
 def median(list1D):
-    """ compute the median of a list of values"""
+    """ return the median of a 1D list of float or integers"""
     list1D = [i for i in list1D if str(i) != 'nan']
     list1D.sort()
     
@@ -49,7 +51,7 @@ def median(list1D):
 
 
 def variance(list1D):
-    """ Compute the variance of a list of values."""
+    """ return the variance of a list of float or integers"""
     meanValue = mean(list1D)
     squaredDiff = 0.0
     for i in list1D:
@@ -58,17 +60,17 @@ def variance(list1D):
     return(variance)
 
 def getMAD(list1D, coefficient=1.4826):
-    """ compute the median absolute deviation of a list of values"""
+    """ return the median absolute deviation of a list of values and multiply it by a chosen coefficient (default 1.4826)"""
     list1D = [i for i in list1D if str(i) != 'nan']
     toSubtract = median(list1D)
     absoluteDeviations = [abs(i - toSubtract) for i in list1D]
     MAD = median(absoluteDeviations)
-    MAD *=coefficient
+    MAD *= coefficient
     return MAD
 
 
 def sqrt(x):
-    """ Return the square root of a given number."""
+    """ return the square root of a given number."""
     return(x**0.5)
 
 def nbOfDimensions(dataSet):
@@ -86,8 +88,11 @@ def nbOfDimensions(dataSet):
     return nbOfLevels
 
 def stringToFloat(dataSet, zeroIsNan=False):
-    """ convert a 1D or 2D list of values into float. If not possible, replace the value with nan"""
-    
+    """ convert a 1D or 2D list of values into float. If not possible, replace the value with nan
+    arguments:
+    dataSet -- a 1D or 2D list of strings
+    zeroIsNan -- decide whether '0.0' and '0' values are changed into Nan or not. Default False
+    """  
     nbOfLevels = nbOfDimensions(dataSet)
     floatedDataset = []
     
@@ -116,11 +121,13 @@ def stringToFloat(dataSet, zeroIsNan=False):
                 
     return floatedDataset
 
-def isOutlier(list1D, maxSD):
-    """ get the index of trials for which a baseline pupil side exceeds a certain number of standard deviations
+def isOutlier(list1D, maxSD, messageIn='notOutlier', messageOut='outlier'):
+    """ determines whether elements of a list are outliers or not, as defined by a chosen number of standard deviations from the mean
     arguments:
     list1D -- the 1D list of all values to consider
     maxSD -- the maximal number of standrad deviations before considering values as outliers
+    messageIn -- the message returned by the function if an item is not an outlier
+    messageOut -- the message returned by the function if an item is an outlier
     """
     meanBaseline = mean(list1D)
     sdBaseline = sqrt(variance(list1D))
@@ -130,21 +137,23 @@ def isOutlier(list1D, maxSD):
     
     for thisTrial in range(len(list1D)):
         if list1D[thisTrial] > upLimit or list1D[thisTrial] < downLimit:
-            outlierTrial += ['outlier']
+            outlierTrial += [messageOut]
         else:
-            outlierTrial += ['notOutlier']
+            outlierTrial += [messageIn]
+    
     return(outlierTrial)
 
-def saveList(dataSet, fileName, charSep, blockSep='\n'):
+def saveList(dataSet, fileName, charSep='\t', blockSep='\n', mode='w'):
     """ Save elements of a list of 1 or 2 dimensions in a specified file.
     arguments:
-    dataSet -- the v-list to save
+    dataSet -- the 1 or 2D list to save
     fileName -- the name given to the file in which the list is written
-    charSep -- the separator between the list elements
-    blockSep -- the separator between several blocks written on the same file (default '\n')
+    charSep -- the separator between the list elements. Default '\t'
+    blockSep -- the separator between several lists written on the same file. Default '\n'
+    mode -- the mode of writing in the created file. 'a' to append new elements to the existing file, 'w' to overwrite. Default 'w'
     """
     # Open a file in 'append' or 'write' mode
-    output = open(fileName,'w')
+    output = open(fileName, mode)
     nbOfLevels = nbOfDimensions(dataSet)
     # Loop through each element of the list
     if nbOfLevels == 2:
@@ -167,23 +176,281 @@ def saveList(dataSet, fileName, charSep, blockSep='\n'):
         output.writelines(blockSep)
     else:
         print('invalid number of Dimensions of the input list')
+    
     # Close file
     output.close()
     return None
 
-def centerFirstFrame(dataSet):
-    """subtract values to be expressed with respect to the first frame. works in 1D and 2D lists"""
+def getValues(dataSet, variableOfInterest):
+    """ extracts all values that have the same index in a 2D or 3D list. Could be seen as 'extracting a column'
+    arguments:
+    dataSet -- the 2D or 3D list in which values are taken. If the list has 2 Dimensions, it will extract the value of the given index in each list
+            If the list has 3 dimensions, it will return a 2D list, each sublist being containing the given index of each sublist
+    variableOfInterest -- the index for which values will be extracted
+    """
     nbOfLevels = nbOfDimensions(dataSet)
+    
+    if nbOfLevels == 3:
+        getSamples = []
+        for thisTrial in dataSet:
+            thisTrialSamples = [thisFrame[variableOfInterest] for thisFrame in thisTrial]
+            getSamples += [thisTrialSamples]
+    
+    elif nbOfLevels == 2:
+        getSamples = [thisFrame[variableOfInterest] for thisFrame in dataSet]
+        
+    return(getSamples)
+
+def selectPeriod(dataSet, startPeriod, endPeriod):
+    """ select the items of a 1D or 2D list in a specified range
+    arguments:
+    dataSet -- a 1D or 2D list in which the wanted items will be extracted
+    startPeriod -- the index ofthe first item of interest
+    endPeriod -- the index of the last item of interest
+    
+    if the given dataSet is a 1D list, this is similar to a basic list indexing (myList[start:stop])
+    If the list is a 2D list, the values of each separate list will be extracted, and it will return a 2D list
+    """
+    interestStartIndex = startPeriod
+    interestEndIndex = endPeriod
+    
+    nbOfLevels = nbOfDimensions(dataSet)
+    
+    if nbOfLevels == 2:
+        # copy the samples of interest
+        epuredTrials = []
+        for thisTrial in dataSet:
+            epuredTrials += [thisTrial[interestStartIndex:interestEndIndex]]
+    
+    elif nbOfLevels == 1:
+        epuredTrials = dataSet[interestStartIndex:interestEndIndex]
+    
+    return epuredTrials
+
+
+def velocitySearch(list1D, rangeOfSearch, eventVelocityThreshold, eventContinuousFrames, stopAtFirst=True, around=False):
+    """ iterate in a given range of a list of floats or integers to find an event based on the difference of consecutive values, and return the index at which an event occured.
+    If no event has been found, return None
+    arguments:
+    list1D -- a 1D list to iterate in
+    rangeOfSearch -- range(onset, offset) in which an event is looked for
+    eventVelocityThreshold -- the minimal difference of values between two consecutive iterations. Negative threshold indicate a decrease
+    eventContinuousFrames -- the number of continuous iterations above threshold necessary to consider an event. 1=2 consecutive iterations
+    stopAtFirst -- if True, returns the first iteration at which the threshold is reached, if False, returns the last iteration found, default True
+    around -- if velocity must stay within a range of +- the given threshold. If True, make sure the threshold is a positive value. default False
+    """
+    counter = 0
+    thisEvent = None
+    
+    # loop through all items of a list
+    for thisFrame in rangeOfSearch:
+        # check if the difference between item n and n+1 is superior to a given threshold
+        # if the threshold is negative, check for values below the threshold
+        if eventVelocityThreshold < 0:
+            if list1D[thisFrame+1] - list1D[thisFrame] <= eventVelocityThreshold:
+                counter += 1
+                # check if velocity has been above threshold for the wanted number of consecutive frames
+                if counter >= eventContinuousFrames:
+                    if stopAtFirst == True:
+                        thisEvent = thisFrame - (counter-1)
+                        break
+                    elif stopAtFirst == False:
+                        # if the threshold is reached and will be lost at the next iteration, take this event and stop search
+                        if list1D[thisFrame+2] - list1D[thisFrame+1] > eventVelocityThreshold:
+                            thisEvent = thisFrame +1
+                            break
+                        else:
+                            thisEvent = thisFrame +1
+            # if the velocity is below threshold, counter is reset
+            else:
+                counter = 0
+        
+        elif eventVelocityThreshold > 0:
+            if around == False:
+                if list1D[thisFrame+1] - list1D[thisFrame] >= eventVelocityThreshold:
+                    counter += 1
+                    # check if velocity has been above threshold for the wanted number of consecutive frames
+                    if counter >= eventContinuousFrames:
+                        if stopAtFirst == True:
+                            thisEvent = thisFrame - (counter-1)
+                            break
+                        elif stopAtFirst == False:
+                        # if the threshold is reached and will be lost at the next iteration, take this event and stop search
+                            if list1D[thisFrame+2] - list1D[thisFrame+1] < eventVelocityThreshold:
+                                thisEvent = thisFrame +1
+                                break
+                            else:
+                                thisEvent = thisFrame +1
+                # if the velocity is below threshold, counter is reset
+                else:
+                    counter = 0
+            
+            elif around == True: # if the difference of consecutive values must stay within a limit
+                if abs(list1D[thisFrame+1] - list1D[thisFrame]) <= eventVelocityThreshold:
+                    counter += 1
+                    # check if the difference has been above threshold for the wanted number of consecutive frames
+                    if counter >= eventContinuousFrames:
+                        if stopAtFirst == True:
+                            thisEvent = thisFrame - (counter-1)
+                            break
+                        elif stopAtFirst == False:
+                            if abs(list1D[thisFrame+2] - list1D[thisFrame+1]) > eventVelocityThreshold:
+                                thisEvent = thisFrame +1
+                                break
+                            else:
+                                thisEvent = thisFrame +1
+                # if the velocity is below threshold, counter is reset
+                else:
+                    counter = 0
+    
+    return thisEvent
+
+def createDataBase(dataSet, nbOfTrials):
+    """ combine the information of different 1D and 2D lists in a same list
+    arguments:
+    dataSet -- a list of 1D or 2D lists, single elements, etc
+    nbOfTrials -- the desired final number of rows """
+    
+    # create a list that will accumulate the information of each given list
+    tempDataSet = []
+    
+    for thisList in dataSet:
+        # if not a list but a single value, repeat it to create a list of it
+        if type(thisList) is not list:
+            list1D = []
+            for i in range(nbOfTrials):
+                list1D += [thisList]
+            tempDataSet += [list1D]
+        else:
+            # take the entire 1D or 2D list
+            tempDataSet += [thisList]
+    
+    # for each sublist, take the values specific to 1 trial together 
+    thisTrial = 0
+    generalDataSet = []
+    while thisTrial < nbOfTrials:
+        thisTrialData = []
+        for thisVariable in tempDataSet:
+            if type(thisVariable[thisTrial]) is not list:
+                thisTrialData += [thisVariable[thisTrial]]
+            else:
+                thisTrialData += [i for i in thisVariable[thisTrial]]
+        generalDataSet += [thisTrialData]
+        thisTrial += 1
+    
+    return generalDataSet
+
+def descriptives(dataSet):
+    """ return the mean, SD and SE of a 1D or 2D list"""
+    
+    nbOfLevels = nbOfDimensions(dataSet)
+    
+    if nbOfLevels == 1:
+        dataSetMean = mean(dataSet)
+        dataSetSD = sqrt(variance(dataSet))
+        dataSetSE = dataSetSD/sqrt(len(dataSet))
+    
+    elif nbOfLevels == 2:
+        dataSetMean = []
+        dataSetSD = []
+        dataSetSE = []
+        
+        for thisList in dataSet:
+            thisListMean = mean(thisList)
+            thisListSD = sqrt(variance(thisList))
+            thisListSE = sqrt(variance(thisList)) / sqrt(len(thisList))
+            
+            dataSetMean += [thisListMean]
+            dataSetSD += [thisListSD]
+            dataSetSE += [thisListSE]
+    
+    return(dataSetMean, dataSetSD, dataSetSE)
+
+def operateLists(list1, list2, kind):
+    """ perform basic arithmetic operations on lists of the same length
+    arguments:
+    list1 -- the list containing the first operands
+    list2 -- the list containing the second operands
+    kind -- the type of operation to perform: 'subtract', 'add', 'multiply', 'divide'
+    """
+    if len(list1) == len(list2):
+        if kind == 'subtract':
+            finalList = [list1[i] - list2[i] for i in range(len(list1))]
+        elif kind == 'add':
+            finalList = [list1[i] + list2[i] for i in range(len(list1))]
+        elif kind == 'multiply':
+            finalList = [list1[i] * list2[i] for i in range(len(list1))]
+        elif kind == 'divide':
+            finalList = [list1[i] / list2[i] for i in range(len(list1))]
+    else:
+        print('lists must have the same length')
+    return finalList
+
+def cluster(list2D, col, cond):
+    """ Group all the rows of a 2D list for which a given column has the same value and return a list of rows (2D list).
+    arguments:
+    list2D -- the 2D list to search in
+    col -- the column index in which the condition applies
+    cond -- the clustering criterion
+    """
+    # Create an empty list
+    clusteredList = []
+    # Fill it with all the rows responding to the condition
+    for i in range(len(list2D)):
+        if str(list2D[i][col]) == str(cond):
+            clusteredList += [list2D[i]]
+        else:
+            continue
+    # Return the filled list
+    return clusteredList
+
+def centerList(dataSet, baselineValues=None):
+    """center lists by subtracting specified values from each value of a 1D or 2D list
+    arguments:
+    dataSet -- the 1D or 2D list to be centered
+    baselineValues -- the values to subtract from lists. None, int, float or 1D list. If None, each list will be centered on its firts value. default None
+    """
+    
+    centerFirst = True if baselineValues is None else False
+    print(centerFirst)
+    
+    nbOfLevels = nbOfDimensions(dataSet)
+    
+    if nbOfLevels == 2:
+        if centerFirst == True:
+            baselineValues = [i[0] for i in dataSet]
+        else:
+            if nbOfDimensions(baselineValues) == 0:
+                baselineValues = [baselineValues for i in range(len(dataSet))]
+        
+        centeredList = []
+        for thisBaseline, thisList in zip(baselineValues, dataSet):
+            centeredList += [[i - thisBaseline for i in thisList]]
+    
+    elif nbOfLevels == 1:
+        if centerFirst == True:
+            baselineValues = dataSet[0]
+        
+        centeredList = [i - baselineValues for i in dataSet]
+    
+    return centeredList
+
+def centerFirstFrame(dataSet):
+    """subtract values to be expressed with respect to the first item of a list. Works with 1D and 2D lists"""
+    nbOfLevels = nbOfDimensions(dataSet)
+    
     firstFrameIndex = 0
     if nbOfLevels == 2:
         for thisTrial in range(len(dataSet)):
             toSubtract = dataSet[thisTrial][firstFrameIndex]
             for thisFrame in range(len(dataSet[thisTrial])):
                 dataSet[thisTrial][thisFrame] -= toSubtract
+    
     elif nbOfLevels == 1:
         toSubtract = dataSet[firstFrameIndex]
         for thisFrame in range(len(dataSet)):
             dataSet[thisFrame] -= toSubtract
+    
     return None
 
 def centerBaseline(dataSet, baselineValues):
@@ -212,8 +479,16 @@ def centerBaseline(dataSet, baselineValues):
     
     return centeredTrials
 
-def plotTrials(list2D, filename, legend=None, fill=None, color=None):
-    """ plots a value of interest for each trial"""
+def plotTrials(list2D, filename, legend=None, fill=None, color=None, show=False):
+    """ plot the values of 2D lists, 1 line per list
+    arguments:
+    list2D -- the 2D list containing each value to show on the same plot
+    fileName -- the name under which the plot must be saved
+    legend -- a 1D list of labels corresponding to every sublist of the list2D. Default None
+    fill -- a 2D list of pairs corresponding to the upper and lower limits of shaded area (for example, mean SE). Default None
+    color -- a 1D list of colors, one per sublist of the list2D. Default None
+    show -- display the plot. default False
+    """
     a = []
     for thisTrial in range(len(list2D)):
         if color is not None:
@@ -225,11 +500,15 @@ def plotTrials(list2D, filename, legend=None, fill=None, color=None):
             plt.fill_between(range(len(list2D[thisTrial])), fill[thisTrial][0], fill[thisTrial][1], alpha = 0.2, color=color[thisTrial])
         if fill is not None and color is None:
             plt.fill_between(range(len(list2D[thisTrial])), fill[thisTrial][0], fill[thisTrial][1], alpha = 0.2, color=color)
+    
     if legend is not None:
         plt.legend(legend)
         
-    plt.savefig(filename+'.png')
-    plt.close()
+    plt.savefig(filename)
+    if show == True:
+        plt.show(block=False)
+    else:
+        plt.close()
     return None
 
 def setHeaders(dataSet, prefix):
@@ -244,11 +523,11 @@ def setHeaders(dataSet, prefix):
     
     if nbOfLevels == 2:
         for i in range(1,len(dataSet[0])+1):
-            headers += [prefix+str(i)]
+            headers += [f'{prefix}{str(i)}']
             
     elif nbOfLevels == 1:
         for i in range(1,len(dataSet)+1):
-            headers += [prefix+str(i)]
+            headers += [f'{prefix}{str(i)}']
     return headers
 
 def msToFrames(samplingRate):
@@ -259,6 +538,7 @@ def msToFrames(samplingRate):
 def countNan(dataSet):
     """ count the number of nan in a 1D or 2D list. If a 1D list is inputed, return a single value, else, return a list"""
     nbOfLevels = nbOfDimensions(dataSet)
+    
     if nbOfLevels == 2:
         nanCounter = []
         for thisTrial in dataSet:
@@ -276,7 +556,7 @@ def countNan(dataSet):
     return nanCounter
 
 def inOut(dataSet, infLimit, supLimit):
-    """ determine whether all values of a 1D or 2D list lie within the limits of given values"""
+    """ determine whether all values of a 1D or 2D list lie within the limits of given values """
     
     nbOfLevels = nbOfDimensions(dataSet)
     
@@ -287,12 +567,12 @@ def inOut(dataSet, infLimit, supLimit):
                     outputList = 'outOfLimits'
                     break
                 else:
-                    outputList = 'in'
+                    outputList = 'withinLimits'
     
     elif nbOfLevels == 2:
         outputList = []
         for thisTrial in dataSet:
-            inclusionMessage = 'in'
+            inclusionMessage = 'withinLimits'
             for thisValue in thisTrial:
                 if str(thisValue) != 'nan':
                     if thisValue > supLimit or thisValue < infLimit:
@@ -516,7 +796,8 @@ def millimetersToArbitrary(dataSet, scalingFactor, mode='area'):
     return inArbitrary
 
 def transversalMean(list2D):
-    """ compute the mean of rows in a 2D list """
+    """ compute the mean of sublists of floats or integers that have the same index in a 2D list
+    Return a 1D list of the mean of each index"""
     allMean = []
     # loop through all columns
     for thisColumn in range(len(list2D[0])):
@@ -528,26 +809,9 @@ def transversalMean(list2D):
         allMean += [mean(thisColumnData)]
     return allMean
 
-def cluster(list2D, col, cond):
-    """ Group all the rows of a 2D list for which a given column has the same value and return a list of rows (2D list).
-    arguments:
-    list2D -- the 2D list to search in
-    col -- the column in which the condition applies
-    cond -- the clustering criterion
-    """
-    # Create an empty list
-    clusteredList = []
-    # Fill it with all the rows responding to the condition
-    for i in range(len(list2D)):
-        if str(list2D[i][col]) == str(cond): # THE INNER LIST MUST BE STRINGS
-            clusteredList += [list2D[i]]
-        else:
-            continue
-    # Return the filled list
-    return clusteredList
 
 def distanceFromPoint(xCoord, yCoord, initialCoordinates=[0,0]):
-    """ compute the absolte distance between a reference point and another using x and y coordinates
+    """ compute the absolute distance between a reference point and another using x and y coordinates
     arguments:
     xCoord -- the x coordinates of the final location (int,1d or 2d list)
     yCoord -- the y coordinates of the final location (int,1d or 2d list)
@@ -582,28 +846,28 @@ def distanceFromPoint(xCoord, yCoord, initialCoordinates=[0,0]):
     
     return hypothenuse
 
-def detectSaccades(dataSet, velocityThreshold=0.01, continuousFrames=1, unidirectionnal=False, saveOffsets=False, showRebounds=False):
+def detectSaccades(list1D, velocityThreshold=0.01, continuousFrames=1, unidirectionnal=False, saveOffsets=False, showRebounds=False):
     """ detect eye saccades based on a velocity threshold 
     arguments:
-    dataSet -- a 1D list of gaze coordinates
-    velocityThreshold -- the velocity threshold at which a gaze displacement is considered a saccade. default 0.01 (degrees/ms)
-    continuousFrames -- the minimal duration for which the threshold must be reached to consider a saccade has started
-    unidirectionnal -- if you are looking only for saccades to one direction. default False
-    saveOffsets -- output saccade offsets as a list
-    showRebounds -- decide whether to keep or not saccades of opposite direction that occur just after the offset of a previous saccade
+    list1D -- a 1D list of gaze coordinates
+    velocityThreshold -- the velocity threshold at which a gaze displacement is considered a saccade. Default 0.01 (degrees/ms)
+    continuousFrames -- the minimal number of continuous frames for which the threshold must be reached to consider that a saccade has started. 1= 2frames. Default 1
+    unidirectionnal -- only detect saccades towards one direction (positive or negative values only). Default False
+    saveOffsets -- output saccade offsets as a list. Default False
+    showRebounds -- decide whether to keep or not saccades of opposite direction that occur just after the offset of a previous saccade (overshoot correction). Default False 
     """
     allSaccadesOnsets = []
     allSaccadesOffsets = []
     startSearch = 0
-    endSearch = len(dataSet) - 2
+    endSearch = len(list1D) - 2
     stillSaccades = True
     
     # as long as saccades are found
     while stillSaccades == True:
         positiveOnset = None
         # look for saccades onsets and offsets
-        positiveOnset = velocitySearch(dataSet, range(startSearch, endSearch), velocityThreshold, continuousFrames)
-        positiveOffset = velocitySearch(dataSet, range(startSearch, endSearch), velocityThreshold, continuousFrames, stopAtFirst=False)
+        positiveOnset = velocitySearch(list1D, range(startSearch, endSearch), velocityThreshold, continuousFrames)
+        positiveOffset = velocitySearch(list1D, range(startSearch, endSearch), velocityThreshold, continuousFrames, stopAtFirst=False)
         
         if positiveOnset is None:
             stillSaccades = False
@@ -620,8 +884,8 @@ def detectSaccades(dataSet, velocityThreshold=0.01, continuousFrames=1, unidirec
         while stillSaccades == True:
             negativeOnset = None
             # look for saccades onsets and offsets
-            negativeOnset = velocitySearch(dataSet, range(startSearch, endSearch), -velocityThreshold, continuousFrames)
-            negativeOffset = velocitySearch(dataSet, range(startSearch, endSearch), -velocityThreshold, continuousFrames, stopAtFirst=False)
+            negativeOnset = velocitySearch(list1D, range(startSearch, endSearch), -velocityThreshold, continuousFrames)
+            negativeOffset = velocitySearch(list1D, range(startSearch, endSearch), -velocityThreshold, continuousFrames, stopAtFirst=False)
             
             if negativeOnset is None:
                 stillSaccades = False
@@ -646,204 +910,3 @@ def detectSaccades(dataSet, velocityThreshold=0.01, continuousFrames=1, unidirec
         return (allSaccadesOnsets, allSaccadesOffsets)
     else:
         return allSaccadesOnsets
-
-def getValues(dataSet, variableOfInterest):
-    """ gather the values of interest from the sample file (either clustered per trials or not) and return them in the same structure as the input file
-    arguments:
-    dataSet -- the samples in which the values are taken, can be a 1D or 2D list
-    variableOfInterest -- the index of the needed value in the sample file
-    """
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    if nbOfLevels == 3:
-        getSamples = []
-        for thisTrial in dataSet:
-            thisTrialSamples = []
-            for thisFrame in thisTrial:
-                thisTrialSamples += [thisFrame[variableOfInterest]]
-            getSamples += [thisTrialSamples]
-    
-    elif nbOfLevels == 2:
-        getSamples = []
-        for thisFrame in dataSet:
-            getSamples += [thisFrame[variableOfInterest]]
-    return(getSamples)
-
-def selectPeriod(dataSet, startPeriod, endPeriod):
-    """ select only the samples from the period of interest (the recording time within a trial usually exceeds the interest period)
-    arguments:
-    dataSet -- the data in which trials need be shortened, a 1D or 2D list
-    startPeriod -- the first frame of interest from the trial start message
-    endPeriod -- the last frame of interest from the trial start message
-    """
-    interestStartIndex = startPeriod
-    interestEndIndex = endPeriod
-    
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    if nbOfLevels == 2:
-        # copy the samples of interest
-        epuredTrials = []
-        for thisTrial in dataSet:
-            epuredTrials += [thisTrial[interestStartIndex:interestEndIndex]]
-    
-    elif nbOfLevels == 1:
-        epuredTrials = dataSet[interestStartIndex:interestEndIndex]
-    
-    return epuredTrials
-
-
-def velocitySearch(list1D, rangeOfSearch, eventVelocityThreshold, eventContinuousFrames, stopAtFirst=True, around=False):
-    """ iterate in a given range of data to find an event based on derivative of values, and return the index at which an event occured.
-    If no event has been found, return None
-    arguments:
-    list1D -- a 1D list to iterate in
-    rangeOfSearch -- range(onset, offset) in which an event is looked for
-    eventVelocityThreshold -- the minimal difference of values between two consecutive iterations. Negative threshold indicate a decrease
-    eventContinuousFrames -- the number of continuous iterations above threshold necessary to consider an event. 1=2 consecutive iterations
-    stopAtFirst -- if True, stops and returns the first event found, if False, returns the last event found, default=True
-    around -- if velocity must stay within a range of +- the given threshold. If True, make sure the threshold is a positive value. default=False
-    """
-    counter = 0
-    thisEvent = None
-    
-    # loop through all pupil data of a given trial
-    for thisFrame in rangeOfSearch:
-        # check if velocity of is superior to a given threshold
-        # if the event is a decrease, check for values below the threshold
-        if eventVelocityThreshold < 0:
-            if list1D[thisFrame+1] - list1D[thisFrame] <= eventVelocityThreshold:
-                counter += 1
-                # check if velocity has been above threshold for the wanted number of consecutive frames
-                if counter >= eventContinuousFrames:
-                    if stopAtFirst == True:
-                        thisEvent = thisFrame - (counter-1)
-                        break
-                    else:
-                        # in the case of multiple blinks, need to look for the first reversal
-                        # if the event is found and will be lost at the next iteration, take this event and stop search
-                        if list1D[thisFrame+2] - list1D[thisFrame+1] > eventVelocityThreshold:
-                            thisEvent = thisFrame +1
-                            break
-                        else:
-                            thisEvent = thisFrame +1
-            # if the velocity is below threshold, counter is reset
-            else:
-                counter = 0
-        elif eventVelocityThreshold > 0:
-            if around == False:
-                if list1D[thisFrame+1] - list1D[thisFrame] >= eventVelocityThreshold:
-                    counter += 1
-                    # check if velocity has been above threshold for the wanted number of consecutive frames
-                    if counter >= eventContinuousFrames:
-                        if stopAtFirst == True:
-                            thisEvent = thisFrame - (counter-1)
-                            break
-                        else:
-                            # in the case of multiple blinks, need to look for the first reversal
-                            # if the event is found and will be lost at the next iteration, take this event and stop search
-                            if list1D[thisFrame+2] - list1D[thisFrame+1] < eventVelocityThreshold:
-                                thisEvent = thisFrame +1
-                                break
-                            else:
-                                thisEvent = thisFrame +1
-                # if the velocity is below threshold, counter is reset
-                else:
-                    counter = 0
-            elif around == True:
-                if abs(list1D[thisFrame+1] - list1D[thisFrame]) <= eventVelocityThreshold:
-                    counter += 1
-                    # check if velocity has been above threshold for the wanted number of consecutive frames
-                    if counter >= eventContinuousFrames:
-                        if stopAtFirst == True:
-                            thisEvent = thisFrame - (counter-1)
-                            break
-                        else:
-                            # in the case of multiple blinks, need to look for the first reversal
-                            # if the event is found and will be lost at the next iteration, take this event and stop search
-                            if abs(list1D[thisFrame+2] - list1D[thisFrame+1]) > eventVelocityThreshold:
-                                thisEvent = thisFrame +1
-                                break
-                            else:
-                                thisEvent = thisFrame +1
-                # if the velocity is below threshold, counter is reset
-                else:
-                    counter = 0
-    return thisEvent
-
-def createDataBase(dataSet, nbOfTrials):
-    """ combine the information of different 1D and 2D lists """
-    
-    # create a list that will accumulate the information of each given list
-    tempDataSet = []
-    
-    for thisList in dataSet:
-        # if not a list but a single value, repeat it to create a list of it
-        if type(thisList) is not list:
-            list1D = []
-            for i in range(nbOfTrials):
-                list1D += [thisList]
-            tempDataSet += [list1D]
-        else:
-            # take the entire 1D or 2D list
-            tempDataSet += [thisList]
-    
-    # for each sublist, take the values specific to 1 trial together 
-    thisTrial = 0
-    generalDataSet = []
-    while thisTrial < nbOfTrials:
-        thisTrialData = []
-        for thisVariable in tempDataSet:
-            if type(thisVariable[thisTrial]) is not list:
-                thisTrialData += [thisVariable[thisTrial]]
-            else:
-                thisTrialData += [i for i in thisVariable[thisTrial]]
-        generalDataSet += [thisTrialData]
-        thisTrial += 1
-    
-    return generalDataSet
-
-def descriptives(dataSet):
-    """ compute the mean, SD and SE of a 1D or 2D list"""
-    
-    nbOfLevels = nbOfDimensions(dataSet)
-    if nbOfLevels == 1:
-        dataSetMean = mean(dataSet)
-        dataSetSD = sqrt(variance(dataSet))
-        dataSetSE = dataSetSD/sqrt(len(dataSet))
-    
-    elif nbOfLevels == 2:
-        dataSetMean = []
-        dataSetSD = []
-        dataSetSE = []
-        
-        for thisList in dataSet:
-            thisListMean = mean(thisList)
-            thisListSD = sqrt(variance(thisList))
-            thisListSE = sqrt(variance(thisList)) / sqrt(len(thisList))
-            
-            dataSetMean += [thisListMean]
-            dataSetSD += [thisListSD]
-            dataSetSE += [thisListSE]
-    
-    return(dataSetMean, dataSetSD, dataSetSE)
-
-def operateLists(list1, list2, kind):
-    """ perform basic arithmetic operations on lists of the same length
-    arguments:
-    list1 -- the list containing the first operandes
-    list2 -- the list containing the second operandes
-    kind -- the type of operation to perform: 'subtract', 'add', 'multiply', 'divide'
-    """
-    if len(list1) == len(list2):
-        if kind == 'subtract':
-            finalList = [list1[i] - list2[i] for i in range(len(list1))]
-        elif kind == 'add':
-            finalList = [list1[i] + list2[i] for i in range(len(list1))]
-        elif kind == 'multiply':
-            finalList = [list1[i] * list2[i] for i in range(len(list1))]
-        elif kind == 'divide':
-            finalList = [list1[i] / list2[i] for i in range(len(list1))]
-    else:
-        print('lists must be the same length')
-    return finalList
