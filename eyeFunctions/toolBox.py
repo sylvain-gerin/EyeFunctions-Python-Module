@@ -1,916 +1,438 @@
-""" this module provides a series of functions used to handle and operate on python lists of various dimensions
-Dependencies: matplotlib.pyplot, scipy.signal, math, csv
+""" this module provides a series of functions used to preprocess eye tracking data recorded with Eyelink devices.It can also be used for other time series data
+Dependencies: scipy.interpolate, eyeFunctions.toolBox
 Author: Sylvain Gerin, sylvain.gerin@uclouvain.be 
 """
 
-import matplotlib.pyplot as plt
-from scipy.signal import savgol_filter
-from math import atan2, degrees
-import csv
+from scipy.interpolate import interp1d
+from eyeFunctions.toolBox import *
 
-def unpack(list2D):
-    """ change a 2D list into a 1D one"""
-    unpackedList = []
-    for thisList in list2D:
-        unpackedList += thisList
-    return unpackedList
-
-def loadFile(fileName, delimiter='\t'):
-    """ open a file with csv.reader using a chosen delimiter
+def cubicSpline(list1D, onset, offset):
+    """ find 4 points on a list to allow for a cubic interpolation. If one of the points is out of range, or is nan, return None
     arguments:
-    fileName -- the name of the file to open
-    delimiter -- the column separator. Default '\t'
+    list1D -- a 1D list for which points must be found to allow cubic interpolation
+    onset -- the list index of the interpolation onset
+    offset -- the list index of the interpolation offset
     """
-    with open(fileName, newline ='') as file:
-        data = csv.reader(file, delimiter=delimiter)
-        data = list(data)
-    return data
+    duration = offset - onset
+    points = [onset-duration, onset, offset, offset+duration]
+    for thisPoint in points:
+        # check if those points are possible to apply
+        if thisPoint < 0 or thisPoint >= len(list1D) or str(list1D[thisPoint]) == 'nan':
+            points = None
+    return points
 
-def mean(list1D):
-    """ return the mean of a 1D list of float or integers. Omit Nan"""
-    list1D = [i for i in list1D if str(i) != 'nan']
-    total = sum(list1D)
-    try:
-        meanValue = total/len(list1D)
-    except:
-        meanValue = float('nan')
-    
-    return meanValue
-
-def median(list1D):
-    """ return the median of a 1D list of float or integers"""
-    list1D = [i for i in list1D if str(i) != 'nan']
-    list1D.sort()
-    
-    n = len(list1D)
-    if n % 2 != 0:
-        indexToLook = int((n+1)/2) - 1 # python starts at 0
-        medianValue = list1D[indexToLook]
-    else:
-        indexToLook = [int(n/2) - 1, int((n/2)+1) - 1]
-        valuesToLook = list1D[indexToLook[0]:indexToLook[1] + 1]
-        medianValue = mean(valuesToLook)
-    
-    return medianValue
-
-
-def variance(list1D):
-    """ return the variance of a list of float or integers"""
-    meanValue = mean(list1D)
-    squaredDiff = 0.0
-    for i in list1D:
-        squaredDiff += (i - meanValue)**2
-    variance = squaredDiff / (len(list1D)-1)
-    return(variance)
-
-def getMAD(list1D, coefficient=1.4826):
-    """ return the median absolute deviation of a list of values and multiply it by a chosen coefficient (default 1.4826)"""
-    list1D = [i for i in list1D if str(i) != 'nan']
-    toSubtract = median(list1D)
-    absoluteDeviations = [abs(i - toSubtract) for i in list1D]
-    MAD = median(absoluteDeviations)
-    MAD *= coefficient
-    return MAD
-
-
-def sqrt(x):
-    """ return the square root of a given number."""
-    return(x**0.5)
-
-def nbOfDimensions(dataSet):
-    """ inform if a list has 0, 1, 2 or 3 dimensions"""
-    if type(dataSet) is not list:
-        nbOfLevels = 0
-    
-    elif type(dataSet[0]) is list:
-        if type(dataSet[0][0]) is list:
-            nbOfLevels = 3
-        else:
-            nbOfLevels = 2
-    else:
-        nbOfLevels = 1
-    return nbOfLevels
-
-def stringToFloat(dataSet, zeroIsNan=False):
-    """ convert a 1D or 2D list of values into float. If not possible, replace the value with nan
+def interpolate(list1D, start, stop):
+    """ interpolate data of a list using a cubic interpolation if possible, and a linear one if not
     arguments:
-    dataSet -- a 1D or 2D list of strings
-    zeroIsNan -- decide whether '0.0' and '0' values are changed into Nan or not. Default False
-    """  
-    nbOfLevels = nbOfDimensions(dataSet)
-    floatedDataset = []
-    
-    if nbOfLevels == 2:
-        for thisTrial in dataSet:
-            thisTrialFloated = []
-            for thisFrame in range(len(thisTrial)):
-                try:
-                    if float(thisTrial[thisFrame]) == float(0) and zeroIsNan==True:
-                        thisTrialFloated[thisFrame] = float('nan')
-                    else:
-                        thisTrialFloated += [float(thisTrial[thisFrame])]                   
-                except:
-                    thisTrialFloated += [float('nan')]
-            floatedDataset += [thisTrialFloated]
-    
-    elif nbOfLevels == 1:
-        for thisFrame in range(len(dataSet)):
-            try:
-                if float(dataSet[thisFrame]) == float(0) and zeroIsNan == True:
-                    floatedDataset[thisFrame] = float('nan')
-                else:
-                    floatedDataset += [float(dataSet[thisFrame])]    
-            except:
-                floatedDataset += [float('nan')]
-                
-    return floatedDataset
-
-def isOutlier(list1D, maxSD, messageIn='notOutlier', messageOut='outlier'):
-    """ determines whether elements of a list are outliers or not, as defined by a chosen number of standard deviations from the mean
-    arguments:
-    list1D -- the 1D list of all values to consider
-    maxSD -- the maximal number of standrad deviations before considering values as outliers
-    messageIn -- the message returned by the function if an item is not an outlier
-    messageOut -- the message returned by the function if an item is an outlier
+    list1D -- the 1D list in which data must be interpolated
+    start -- the list index for interpolation onset
+    stop -- the list index for interpolation offset
     """
-    meanBaseline = mean(list1D)
-    sdBaseline = sqrt(variance(list1D))
-    upLimit = meanBaseline + maxSD*sdBaseline
-    downLimit = meanBaseline - maxSD*sdBaseline
-    outlierTrial = []
+    # start by defining if a cubic interpolation is feasible
+    indexPoints = cubicSpline(list1D, start, stop)
     
-    for thisTrial in range(len(list1D)):
-        if list1D[thisTrial] > upLimit or list1D[thisTrial] < downLimit:
-            outlierTrial += [messageOut]
-        else:
-            outlierTrial += [messageIn]
+    # if not possible, perform a linear interpolation
+    if indexPoints is None:
+        indexPoints = [start, stop]
+        # get the data corresponding to the points of reconstruction
+        dataPoints = [list1D[i] for i in indexPoints]
+        # interpolate these data
+        interpolatedResult = interp1d(indexPoints, dataPoints)
     
-    return(outlierTrial)
-
-def saveList(dataSet, fileName, charSep='\t', blockSep='\n', mode='w'):
-    """ Save elements of a list of 1 or 2 dimensions in a specified file.
-    arguments:
-    dataSet -- the 1 or 2D list to save
-    fileName -- the name given to the file in which the list is written
-    charSep -- the separator between the list elements. Default '\t'
-    blockSep -- the separator between several lists written on the same file. Default '\n'
-    mode -- the mode of writing in the created file. 'a' to append new elements to the existing file, 'w' to overwrite. Default 'w'
-    """
-    # Open a file in 'append' or 'write' mode
-    output = open(fileName, mode)
-    nbOfLevels = nbOfDimensions(dataSet)
-    # Loop through each element of the list
-    if nbOfLevels == 2:
-        for i in range(len(dataSet)):
-            for j in range(len(dataSet[i])):
-                # Add these elements in the file
-                if j < (len(dataSet[i]) - 1):
-                    output.writelines(str(dataSet[i][j]) + charSep)
-                elif j >= (len(dataSet[i]) - 1):
-                    output.writelines(str(dataSet[i][j]))
-            output.writelines(blockSep)
-            
-    elif nbOfLevels == 1:
-        for i in range(len(dataSet)):
-            if i < (len(dataSet) - 1):
-                output.writelines(str(i) + charSep)
-            elif i >= (len(dataSet)) - 1:
-                output.writelines(str(dataSet[i]))
-            output.writelines('\n')
-        output.writelines(blockSep)
+    # if possible, perform a cubic interpolation
     else:
-        print('invalid number of Dimensions of the input list')
+        # get the data corresponding to the points of reconstruction
+        dataPoints = [list1D[i] for i in indexPoints]
+        # interpolate these data
+        interpolatedResult = interp1d(indexPoints, dataPoints, kind='cubic')
     
-    # Close file
-    output.close()
+    # create a range of values for which interpolated data must be available
+    interpolatedIndex = [i for i in range(start, stop)]
+    # select the interpolated data for this range
+    interpolatedData = interpolatedResult(interpolatedIndex)
+    
+    # put it back in the original list
+    list1D[start:stop] = interpolatedData
     return None
 
-def getValues(dataSet, variableOfInterest):
-    """ extracts all values that have the same index in a 2D or 3D list. Could be seen as 'extracting a column'
+def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, sampleClockIndex=0, pupilSizeIndex=3, showInfo=False):
+    """ take event and sample datasets and cluster samples based on messages in the event file
     arguments:
-    dataSet -- the 2D or 3D list in which values are taken. If the list has 2 Dimensions, it will extract the value of the given index in each list
-            If the list has 3 dimensions, it will return a 2D list, each sublist being containing the given index of each sublist
-    variableOfInterest -- the index for which values will be extracted
+    samples -- the 2D list containing samples
+    events -- the 2D list containing events
+    startMessage -- the message from which samples are gathered
+    endMessage -- the message up to which samples are gathered
+    eventClockIndex -- the column index of the clock value in the event file (default=1)
+    sampleClockIndex -- the column index of the clock value in the sample file (default=0)
+    pupilSizeIndex -- the column index of pupil size in the sample file (default=3)
     """
-    nbOfLevels = nbOfDimensions(dataSet)
     
-    if nbOfLevels == 3:
-        getSamples = []
+    # retrieve all the onsets and offsets of trials in the events files
+    startClockValue = []
+    endClockValue = []
+    # check every messages in the event file
+    for messages in events:
+        if startMessage in messages:
+            startClockValue += [messages[eventClockIndex]] # only take the clock value of onset message
+        elif endMessage in messages:
+            endClockValue += [messages[eventClockIndex]] # only take the clock value of offset message
+    
+    # get the indexes of onset and offset messages in the sample file
+    trialOnset = []
+    trialOffset = []
+    
+    sampleClocks = getValues(samples, sampleClockIndex)
+    
+    for start, stop in zip(startClockValue, endClockValue):
+        trialOnset += [sampleClocks.index(start)]
+        trialOffset += [sampleClocks.index(stop)]
+        if showInfo== True:
+            print('trial', len(trialOnset))
+    
+    # select all samples between the limits for each trial
+    allTrials = []
+    for start, stop in zip(trialOnset, trialOffset):
+        allTrials += [stringToFloat(samples[start:stop+1], zeroIsNan=True)]
+    
+    return allTrials
+
+def downSample(dataSet, initialRate, finalRate):
+    """ downsample a dataset from an initial to a final sampling rate
+    arguments:
+    dataSet -- the dataset to downsample, 1D or 2D list
+    initialRate -- the initial sampling rate in Hz
+    finalRate -- the sample rate desired in Hz for the dataset
+    """
+    # define the ratio at which samples will be collected
+    stepSize = initialRate // finalRate
+    
+    nbOfLevels = nbOfDimensions(dataSet)
+    downSampledData = []
+    
+    if nbOfLevels == 2:
         for thisTrial in dataSet:
-            thisTrialSamples = [thisFrame[variableOfInterest] for thisFrame in thisTrial]
-            getSamples += [thisTrialSamples]
-    
-    elif nbOfLevels == 2:
-        getSamples = [thisFrame[variableOfInterest] for thisFrame in dataSet]
-        
-    return(getSamples)
-
-def selectPeriod(dataSet, startPeriod, endPeriod):
-    """ select the items of a 1D or 2D list in a specified range
-    arguments:
-    dataSet -- a 1D or 2D list in which the wanted items will be extracted
-    startPeriod -- the index ofthe first item of interest
-    endPeriod -- the index of the last item of interest
-    
-    if the given dataSet is a 1D list, this is similar to a basic list indexing (myList[start:stop])
-    If the list is a 2D list, the values of each separate list will be extracted, and it will return a 2D list
-    """
-    interestStartIndex = startPeriod
-    interestEndIndex = endPeriod
-    
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    if nbOfLevels == 2:
-        # copy the samples of interest
-        epuredTrials = []
-        for thisTrial in dataSet:
-            epuredTrials += [thisTrial[interestStartIndex:interestEndIndex]]
+            thisTrialdownSampledData = []
+            for thisFrame in range(0,len(thisTrial),stepSize):
+                thisTrialdownSampledData += [thisTrial[thisFrame]]
+            downSampledData += [thisTrialdownSampledData]
     
     elif nbOfLevels == 1:
-        epuredTrials = dataSet[interestStartIndex:interestEndIndex]
+        for thisFrame in range(0,len(dataSet), stepSize):
+            downSampledData += [dataSet[thisFrame]]
     
-    return epuredTrials
+    return downSampledData
 
-
-def velocitySearch(list1D, rangeOfSearch, eventVelocityThreshold, eventContinuousFrames, stopAtFirst=True, around=False):
-    """ iterate in a given range of a list of floats or integers to find an event based on the difference of consecutive values, and return the index at which an event occured.
-    If no event has been found, return None
+def getConditions(eventFile, independentVariable, eventMessageIndex=2):
+    """ find the messages corresponding to a list of possibilities
     arguments:
-    list1D -- a 1D list to iterate in
-    rangeOfSearch -- range(onset, offset) in which an event is looked for
-    eventVelocityThreshold -- the minimal difference of values between two consecutive iterations. Negative threshold indicate a decrease
-    eventContinuousFrames -- the number of continuous iterations above threshold necessary to consider an event. 1=2 consecutive iterations
-    stopAtFirst -- if True, returns the first iteration at which the threshold is reached, if False, returns the last iteration found, default True
-    around -- if velocity must stay within a range of +- the given threshold. If True, make sure the threshold is a positive value. default False
+    eventFile -- the dataSet in which messages must be found
+    independentVariable --  a list of the messages corresponding to the levels of a given IV
+    eventMessageIndex -- the column index in which messages are found in the event file
     """
-    counter = 0
-    thisEvent = None
-    
-    # loop through all items of a list
-    for thisFrame in rangeOfSearch:
-        # check if the difference between item n and n+1 is superior to a given threshold
-        # if the threshold is negative, check for values below the threshold
-        if eventVelocityThreshold < 0:
-            if list1D[thisFrame+1] - list1D[thisFrame] <= eventVelocityThreshold:
-                counter += 1
-                # check if velocity has been above threshold for the wanted number of consecutive frames
-                if counter >= eventContinuousFrames:
-                    if stopAtFirst == True:
-                        thisEvent = thisFrame - (counter-1)
-                        break
-                    elif stopAtFirst == False:
-                        # if the threshold is reached and will be lost at the next iteration, take this event and stop search
-                        if list1D[thisFrame+2] - list1D[thisFrame+1] > eventVelocityThreshold:
-                            thisEvent = thisFrame +1
-                            break
-                        else:
-                            thisEvent = thisFrame +1
-            # if the velocity is below threshold, counter is reset
-            else:
-                counter = 0
-        
-        elif eventVelocityThreshold > 0:
-            if around == False:
-                if list1D[thisFrame+1] - list1D[thisFrame] >= eventVelocityThreshold:
-                    counter += 1
-                    # check if velocity has been above threshold for the wanted number of consecutive frames
-                    if counter >= eventContinuousFrames:
-                        if stopAtFirst == True:
-                            thisEvent = thisFrame - (counter-1)
-                            break
-                        elif stopAtFirst == False:
-                        # if the threshold is reached and will be lost at the next iteration, take this event and stop search
-                            if list1D[thisFrame+2] - list1D[thisFrame+1] < eventVelocityThreshold:
-                                thisEvent = thisFrame +1
-                                break
-                            else:
-                                thisEvent = thisFrame +1
-                # if the velocity is below threshold, counter is reset
-                else:
-                    counter = 0
-            
-            elif around == True: # if the difference of consecutive values must stay within a limit
-                if abs(list1D[thisFrame+1] - list1D[thisFrame]) <= eventVelocityThreshold:
-                    counter += 1
-                    # check if the difference has been above threshold for the wanted number of consecutive frames
-                    if counter >= eventContinuousFrames:
-                        if stopAtFirst == True:
-                            thisEvent = thisFrame - (counter-1)
-                            break
-                        elif stopAtFirst == False:
-                            if abs(list1D[thisFrame+2] - list1D[thisFrame+1]) > eventVelocityThreshold:
-                                thisEvent = thisFrame +1
-                                break
-                            else:
-                                thisEvent = thisFrame +1
-                # if the velocity is below threshold, counter is reset
-                else:
-                    counter = 0
-    
-    return thisEvent
+    # get the informations of each trial
+    conditionInfo = []
+    # loop through events and take the messages of trials for each condition
+    for messages in eventFile: 
+        if len(messages) > eventMessageIndex: # make sure that lines without message are not taken
+            if messages[eventMessageIndex] in independentVariable:
+                conditionInfo += [messages[eventMessageIndex]]
+    return conditionInfo
 
-def createDataBase(dataSet, nbOfTrials):
-    """ combine the information of different 1D and 2D lists in a same list
+def reconstructBlinks(pupilData, xGazeData, yGazeData, velocityThreshold=3, continuousFrames=2, offsetThreshold=1, margin=10, maxDuration=500, reconstructGaze=False, countBlinks=True):
+    """ interpolate pupil size data with a cubic or linear interpolation
     arguments:
-    dataSet -- a list of 1D or 2D lists, single elements, etc
-    nbOfTrials -- the desired final number of rows """
+    pupilData --  a 1D list of pupil size values
+    xGazeData -- a 1D list of x gaze coordinates
+    yGazeData -- a 1D list of y gaze coordinates
+    velocityThreshold -- the velocity threshold at which pupil size changes (both increases and decreases) indicate blinks, default 3
+    continuousFrames -- the number of consecutive time points above threshold to consider that a given event occurs (blink onset, blink offset), default 2
+    offsetThreshold -- the range around which velocity differences must stay to be considered as a blink offset. default 1
+    margin -- the number of time points taken around the onset and offset of a blink that are considered unreliable, default 10
+    maxDuration -- the maximal number of consecutive time points to interpolate, default=500
+    reconstructGaze -- interpolate gaze coordinates during blinks. If not interpolated, replace with missing values. default False
+    countBlinks -- decide whether to keep track of the number of detected blinks. default True
+    """
     
-    # create a list that will accumulate the information of each given list
-    tempDataSet = []
+    # this is a recursive process: it will continue until there are blinks to reconstruct
+    blinkCounter =  None if countBlinks == False else 0
     
-    for thisList in dataSet:
-        # if not a list but a single value, repeat it to create a list of it
-        if type(thisList) is not list:
-            list1D = []
-            for i in range(nbOfTrials):
-                list1D += [thisList]
-            tempDataSet += [list1D]
-        else:
-            # take the entire 1D or 2D list
-            tempDataSet += [thisList]
-    
-    # for each sublist, take the values specific to 1 trial together 
-    thisTrial = 0
-    generalDataSet = []
-    while thisTrial < nbOfTrials:
-        thisTrialData = []
-        for thisVariable in tempDataSet:
-            if type(thisVariable[thisTrial]) is not list:
-                thisTrialData += [thisVariable[thisTrial]]
-            else:
-                thisTrialData += [i for i in thisVariable[thisTrial]]
-        generalDataSet += [thisTrialData]
-        thisTrial += 1
-    
-    return generalDataSet
-
-def descriptives(dataSet):
-    """ return the mean, SD and SE of a 1D or 2D list"""
-    
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    if nbOfLevels == 1:
-        dataSetMean = mean(dataSet)
-        dataSetSD = sqrt(variance(dataSet))
-        dataSetSE = dataSetSD/sqrt(len(dataSet))
-    
-    elif nbOfLevels == 2:
-        dataSetMean = []
-        dataSetSD = []
-        dataSetSE = []
+    stillBlinks = True
+    while stillBlinks:
         
-        for thisList in dataSet:
-            thisListMean = mean(thisList)
-            thisListSD = sqrt(variance(thisList))
-            thisListSE = sqrt(variance(thisList)) / sqrt(len(thisList))
-            
-            dataSetMean += [thisListMean]
-            dataSetSD += [thisListSD]
-            dataSetSE += [thisListSE]
-    
-    return(dataSetMean, dataSetSD, dataSetSE)
-
-def operateLists(list1, list2, kind):
-    """ perform basic arithmetic operations on lists of the same length
-    arguments:
-    list1 -- the list containing the first operands
-    list2 -- the list containing the second operands
-    kind -- the type of operation to perform: 'subtract', 'add', 'multiply', 'divide'
-    """
-    if len(list1) == len(list2):
-        if kind == 'subtract':
-            finalList = [list1[i] - list2[i] for i in range(len(list1))]
-        elif kind == 'add':
-            finalList = [list1[i] + list2[i] for i in range(len(list1))]
-        elif kind == 'multiply':
-            finalList = [list1[i] * list2[i] for i in range(len(list1))]
-        elif kind == 'divide':
-            finalList = [list1[i] / list2[i] for i in range(len(list1))]
-    else:
-        print('lists must have the same length')
-    return finalList
-
-def cluster(list2D, col, cond):
-    """ Group all the rows of a 2D list for which a given column has the same value and return a list of rows (2D list).
-    arguments:
-    list2D -- the 2D list to search in
-    col -- the column index in which the condition applies
-    cond -- the clustering criterion
-    """
-    # Create an empty list
-    clusteredList = []
-    # Fill it with all the rows responding to the condition
-    for i in range(len(list2D)):
-        if str(list2D[i][col]) == str(cond):
-            clusteredList += [list2D[i]]
-        else:
-            continue
-    # Return the filled list
-    return clusteredList
-
-def centerList(dataSet, baselineValues=None):
-    """center lists by subtracting specified values from each value of a 1D or 2D list
-    arguments:
-    dataSet -- the 1D or 2D list to be centered
-    baselineValues -- the values to subtract from lists. None, int, float or 1D list. If None, each list will be centered on its firts value. default None
-    """
-    
-    centerFirst = True if baselineValues is None else False
-    print(centerFirst)
-    
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    if nbOfLevels == 2:
-        if centerFirst == True:
-            baselineValues = [i[0] for i in dataSet]
-        else:
-            if nbOfDimensions(baselineValues) == 0:
-                baselineValues = [baselineValues for i in range(len(dataSet))]
+        # Detect blink onsets based on velocity
         
-        centeredList = []
-        for thisBaseline, thisList in zip(baselineValues, dataSet):
-            centeredList += [[i - thisBaseline for i in thisList]]
-    
-    elif nbOfLevels == 1:
-        if centerFirst == True:
-            baselineValues = dataSet[0]
-        
-        centeredList = [i - baselineValues for i in dataSet]
-    
-    return centeredList
-
-def centerFirstFrame(dataSet):
-    """subtract values to be expressed with respect to the first item of a list. Works with 1D and 2D lists"""
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    firstFrameIndex = 0
-    if nbOfLevels == 2:
-        for thisTrial in range(len(dataSet)):
-            toSubtract = dataSet[thisTrial][firstFrameIndex]
-            for thisFrame in range(len(dataSet[thisTrial])):
-                dataSet[thisTrial][thisFrame] -= toSubtract
-    
-    elif nbOfLevels == 1:
-        toSubtract = dataSet[firstFrameIndex]
-        for thisFrame in range(len(dataSet)):
-            dataSet[thisFrame] -= toSubtract
-    
-    return None
-
-def centerBaseline(dataSet, baselineValues):
-    """ subtract a previously computed value from a dataset
-    arguments:
-    dataSet -- the dataset containing the values to center (1D or 2D list)
-    baselineValues -- the baseline values to remove from the dataSet
-    !!! the variable containing the baseline values must have a dimension less than the dataSet!!!
-    """
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    centeredTrials = []
-    
-    if nbOfLevels == 2:
-        for thisTrial in range(len(baselineValues)):
-            toSubtract = baselineValues[thisTrial]
-            thisCenteredTrial = []
-            for thisFrame in dataSet[thisTrial]:
-                thisCenteredTrial += [thisFrame - toSubtract]
-            centeredTrials += [thisCenteredTrial]
-            
-    elif nbOfLevels == 1:
-        toSubtract = baselineValues
-        for thisFrame in dataSet:
-            centeredTrials += [thisFrame-toSubtract]
-    
-    return centeredTrials
-
-def plotTrials(list2D, filename, legend=None, fill=None, color=None, show=False):
-    """ plot the values of 2D lists, 1 line per list
-    arguments:
-    list2D -- the 2D list containing each value to show on the same plot
-    fileName -- the name under which the plot must be saved
-    legend -- a 1D list of labels corresponding to every sublist of the list2D. Default None
-    fill -- a 2D list of pairs corresponding to the upper and lower limits of shaded area (for example, mean SE). Default None
-    color -- a 1D list of colors, one per sublist of the list2D. Default None
-    show -- display the plot. default False
-    """
-    a = []
-    for thisTrial in range(len(list2D)):
-        if color is not None:
-            a += [plt.plot(list2D[thisTrial], color=color[thisTrial])]
-        else:
-            a += [plt.plot(list2D[thisTrial], color=color)]
-        
-        if fill is not None and color is not None:
-            plt.fill_between(range(len(list2D[thisTrial])), fill[thisTrial][0], fill[thisTrial][1], alpha = 0.2, color=color[thisTrial])
-        if fill is not None and color is None:
-            plt.fill_between(range(len(list2D[thisTrial])), fill[thisTrial][0], fill[thisTrial][1], alpha = 0.2, color=color)
-    
-    if legend is not None:
-        plt.legend(legend)
-        
-    plt.savefig(filename)
-    if show == True:
-        plt.show(block=False)
-    else:
-        plt.close()
-    return None
-
-def setHeaders(dataSet, prefix):
-    """loop through a 1D or 2D list to generate names corresponding to a given prefix + the index of each element in the innermost list
-    arguments:
-    dataSet -- a 1D or 2D list to serve as an index counter. In either case, it will take the number of items within the smaller level of list
-    prefix -- the base name to give to all the names that will be generated
-    """
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    headers = []
-    
-    if nbOfLevels == 2:
-        for i in range(1,len(dataSet[0])+1):
-            headers += [f'{prefix}{str(i)}']
-            
-    elif nbOfLevels == 1:
-        for i in range(1,len(dataSet)+1):
-            headers += [f'{prefix}{str(i)}']
-    return headers
-
-def msToFrames(samplingRate):
-    """ give the number of frames equivalent to 1 ms"""
-    ratio = 1000/samplingRate
-    return ratio
-
-def countNan(dataSet):
-    """ count the number of nan in a 1D or 2D list. If a 1D list is inputed, return a single value, else, return a list"""
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    if nbOfLevels == 2:
-        nanCounter = []
-        for thisTrial in dataSet:
-            thisTrialNan = 0
-            for thisFrame in thisTrial:
-                if str(thisFrame) == 'nan':
-                    thisTrialNan += 1
-            nanCounter += [thisTrialNan]
-    
-    elif nbOfLevels == 1:
-        nanCounter = 0
-        for i in dataSet:
-            if str(i) == 'nan':
-                nanCounter += 1
-    return nanCounter
-
-def inOut(dataSet, infLimit, supLimit):
-    """ determine whether all values of a 1D or 2D list lie within the limits of given values """
-    
-    nbOfLevels = nbOfDimensions(dataSet)
-    
-    if nbOfLevels == 1:
-        for thisValue in dataSet:
-            if str(thisValue) != 'nan':
-                if thisValue > supLimit or thisValue < infLimit:
-                    outputList = 'outOfLimits'
-                    break
-                else:
-                    outputList = 'withinLimits'
-    
-    elif nbOfLevels == 2:
-        outputList = []
-        for thisTrial in dataSet:
-            inclusionMessage = 'withinLimits'
-            for thisValue in thisTrial:
-                if str(thisValue) != 'nan':
-                    if thisValue > supLimit or thisValue < infLimit:
-                        inclusionMessage = 'outOfLimits'
-                        break
-            outputList += [inclusionMessage]
-    
-    return outputList
-
-def pixelsToDegrees(dataSet, screenSizeCm, screenSizePx, eyeScreenDistance):
-    """
-    dataSet: a single value, 1D or 2D list to be converted in degrees
-    screenSizeCm -- the size of the screen (in the relevant dimension) in cm
-    screenSizePx -- the size of the screen (in the relevant dimension) in px
-    eyeScreenDistance -- the distance separating subject's eye and the screen in cm
-    """
-    degPerPx = degrees(atan2(screenSizeCm/2, eyeScreenDistance)) / (screenSizePx/2)
-    
-    if type(dataSet) is not list:
-        valueInDegrees = dataSet*degPerPx
-    else:
-        nbOfLevels = nbOfDimensions(dataSet)
-        valueInDegrees = []
-        if nbOfLevels == 1:
-            for thisValue in dataSet:
-                valueInDegrees += [thisValue*degPerPx]
-        elif nbOfLevels == 2:
-            for thisTrial in dataSet:
-                thisTrialList = []
-                for thisValue in thisTrial:
-                    thisTrialList += [thisValue*degPerPx]
-                valueInDegrees += [thisTrialList]
-    return valueInDegrees
-
-def degreesToPixels(dataSet, screenSizeCm, screenSizePx, eyeScreenDistance):
-    """
-    dataSet: a single value, 1D or 2D list to be converted in degrees
-    screenSizeCm -- the size of the screen (in the relevant dimension) in cm
-    screenSizePx -- the size of the screen (in the relevant dimension) in px
-    eyeScreenDistance -- the distance separating subject's eye and the screen in cm
-    """
-    degPerPx = degrees(atan2(0.5*screenSizeCm, eyeScreenDistance)) / (0.5*screenSizePx)
-    
-    if type(dataSet) is not list:
-        valueInPixels = dataSet/degPerPx
-    else:
-        nbOfLevels = nbOfDimensions(dataSet)
-        valueInPixels = []
-        if nbOfLevels == 1:
-            for thisValue in dataSet:
-                valueInPixels += [thisValue/degPerPx]
-        elif nbOfLevels == 2:
-            for thisTrial in dataSet:
-                thisTrialList = []
-                for thisValue in thisTrial:
-                    thisTrialList += [thisValue/degPerPx]
-                valueInPixels += [thisTrialList]
-    return valueInPixels
-
-def pixelsToCm(dataSet, screenSizeCm, screenSizePx):
-    """
-    dataSet: a single value, 1D or 2D list to be converted in degrees
-    screenSizeCm -- the size of the screen (in the relevant dimension) in cm
-    screenSizePx -- the size of the screen (in the relevant dimension) in px
-    """
-    pxPerCm = screenSizePx/screenSizeCm
-    
-    if type(dataSet) is not list:
-        valueInCm = dataSet/pxPerCm
-    
-    else:
-        nbOfLevels = nbOfDimensions(dataSet)
-        valueInCm = []
-        if nbOfLevels == 1:
-            for thisValue in dataSet:
-                valueInCm += [thisValue/pxPerCm]
-        elif nbOfLevels == 2:
-            for thisTrial in dataSet:
-                thisTrialList = []
-                for thisValue in thisTrial:
-                    thisTrialList += [thisValue/pxPerCm]
-                valueInCm += [thisTrialList]
-    return valueInCm    
-    
-def cmToPixels(dataSet, screenSizeCm, screenSizePx):
-    """
-    dataSet: a single value, 1D or 2D list to be converted in degrees
-    screenSizeCm -- the size of the screen (in the relevant dimension) in cm
-    screenSizePx -- the size of the screen (in the relevant dimension) in px
-    """
-    pxPerCm = screenSizePx/screenSizeCm
-    
-    if type(dataSet) is not list:
-        valueInPx = dataSet*pxPerCm
-    
-    else:
-        nbOfLevels = nbOfDimensions(dataSet)
-        valueInPx = []
-        if nbOfLevels == 1:
-            for thisValue in dataSet:
-                valueInPx += [thisValue*pxPerCm]
-        elif nbOfLevels == 2:
-            for thisTrial in dataSet:
-                thisTrialList = []
-                for thisValue in thisTrial:
-                    thisTrialList += [thisValue*pxPerCm]
-                valueInPx += [thisTrialList]
-    return valueInPx
-
-def arbitraryToMillimeters(dataSet, scalingFactor, mode='area'):
-    """ convert pupil size from a.u. to millimeters based on a scaling factor
-    arguments:
-    dataSet --  an int, 1d or 2d list containing the pupil size value in mm
-    scaling factor -- the ratio converter from a.u. to mm, can be found using computeScalingFactor()
-    mode -- the variable the arbitrary units refer to (diameter, area). default=area
-    """
-    if type(dataSet) is not list:
-        if mode == 'diameter':
-            inMillimeters = dataSet*scalingFactor
-        elif mode == 'area':
-            inMillimeters = sqrt(dataSet)*scalingFactor
-    else:
-        nbOfLevels = nbOfDimensions(dataSet)
-        inMillimeters = []
-        
-        if nbOfLevels == 2:
-            for thisTrial in dataSet:
-                thisTrialConvertedValue = []
-                for thisValue in thisTrial:
-                    if mode == 'diameter':
-                        thisTrialConvertedValue += [thisValue*scalingFactor]
-                    elif mode == 'area':
-                        thisTrialConvertedValue += [sqrt(thisValue)*scalingFactor]
-                inMillimeters += [thisTrialConvertedValue]    
-        
-        elif nbOfLevels == 1:
-            for thisValue in dataSet:
-                if mode == 'diameter':
-                    inMillimeters += [thisValue*scalingFactor]
-                elif mode == 'area':
-                    inMillimeters += [sqrt(thisValue)*scalingFactor]
-    return inMillimeters
-
-def computeScalingFactor(actualSize, arbitrarySize, mode='area'):
-    """ computes a ratio to convert pupil size in a.u. to mm.
-    argments:
-    actualSize -- the actual size of the measured pupil
-    arbitrarySize -- the size given for the actual size in a.u.
-    mode -- the mode of pupil size recording. area, or diameter, default AREA
-    """
-    if mode == 'diameter':
-        scalingFactor = actualSize/arbitrarySize
-    elif mode == 'area':
-        scalingFactor = actualSize/sqrt(arbitrarySize)
-    return scalingFactor
-
-def degreesToCm(dataSet, screenSizeCm, screenSizePx, eyeScreenDistance):
-    """
-    dataSet: a single value, 1D or 2D list to be converted in degrees
-    screenSizeCm -- the size of the screen (in the relevant dimension) in cm
-    screenSizePx -- the size of the screen (in the relevant dimension) in px
-    eyeScreenDistance -- the distance separating subject's eye and the screen in cm
-    """
-    
-    # start by converting degrees to pixels
-    pixelsDataSet = degreesToPixels(dataSet, screenSizeCm, screenSizePx, eyeScreenDistance)
-    
-    # convert pixels in cm
-    cmDataSet = pixelsToCm(pixelsDataSet, screenSizeCm, screenSizePx)
-    
-    return cmDataSet
-
-def cmToDegrees(dataSet, screenSizeCm, screenSizePx, eyeScreenDistance):
-    """
-    dataSet: a single value, 1D or 2D list to be converted in degrees
-    screenSizeCm -- the size of the screen (in the relevant dimension) in cm
-    screenSizePx -- the size of the screen (in the relevant dimension) in px
-    eyeScreenDistance -- the distance separating subject's eye and the screen in cm
-    """
-    
-    # start by converting cm to pixels
-    pixelsDataSet = cmToPixels(dataSet, screenSizeCm, screenSizePx)
-    
-    # convert pixels in degrees
-    degreesDataSet = pixelsToDegrees(pixelsDataSet, screenSizeCm, screenSizePx, eyeScreenDistance)
-    
-    return degreesDataSet
-
-def millimetersToArbitrary(dataSet, scalingFactor, mode='area'):
-    """ convert millimeters values into arbitrary ones based on a scaling factor
-    arguments:
-    dataSet --  an int, 1d or 2d list containing the pupil size value in mm
-    scaling factor -- the ratio converter from a.u. to mm, can be found using computeScalingFactor()
-    mode -- the variable the arbitrary units refer to (diameter, area). default=area
-    """
-    if type(dataSet) is not list:
-        if mode == 'diameter':
-            inArbitrary = dataSet/scalingFactor
-        elif mode == 'area':
-            inArbitrary = (dataSet/scalingFactor)**2
-    else:
-        nbOfLevels = nbOfDimensions(dataSet)
-        inArbitrary = []
-        
-        if nbOfLevels == 2:
-            for thisTrial in dataSet:
-                thisTrialConvertedValue = []
-                for thisValue in thisTrial:
-                    if mode == 'diameter':
-                        thisTrialConvertedValue += [thisValue/scalingFactor]
-                    elif mode == 'area':
-                        thisTrialConvertedValue += [(thisValue/scalingFactor)**2]
-                inArbitrary += [thisTrialConvertedValue]    
-        
-        elif nbOfLevels == 1:
-            for thisValue in dataSet:
-                if mode == 'diameter':
-                    inArbitrary += [thisValue/scalingFactor]
-                elif mode == 'area':
-                    inArbitrary += [(thisValue/scalingFactor)**2]
-    return inArbitrary
-
-def transversalMean(list2D):
-    """ compute the mean of sublists of floats or integers that have the same index in a 2D list
-    Return a 1D list of the mean of each index"""
-    allMean = []
-    # loop through all columns
-    for thisColumn in range(len(list2D[0])):
-        thisColumnData = []
-        # gather each row of the same columns
-        for thisRow in range(len(list2D)):
-            thisColumnData += [list2D[thisRow][thisColumn]]
-        # compute the mean of each list
-        allMean += [mean(thisColumnData)]
-    return allMean
-
-
-def distanceFromPoint(xCoord, yCoord, initialCoordinates=[0,0]):
-    """ compute the absolute distance between a reference point and another using x and y coordinates
-    arguments:
-    xCoord -- the x coordinates of the final location (int,1d or 2d list)
-    yCoord -- the y coordinates of the final location (int,1d or 2d list)
-    initialCoordinates -- the reference coordinates from which a distance must be computed. default [0,0]
-    """
-    toSubtractX = initialCoordinates[0]
-    toSubtractY = initialCoordinates[1]
-    
-    if type(xCoord) is not list or type(yCoord) is not list:
-        xCoord -= toSubtractX
-        yCoord -= toSubtractY
-        hypothenuse = sqrt(xCoord**2 + yCoord**2)
-    else:
-        hypothenuse = []
-        nbOfLevels = nbOfDimensions(xCoord)
-        if nbOfLevels == 1:
-            xCoord = [i-toSubtractX for i in xCoord]
-            yCoord = [i-toSubtractY for i in yCoord]
-            for thisValue in range(len(xCoord)):
-                hypothenuse += [sqrt(xCoord[thisValue]**2 + yCoord[thisValue]**2)]
-        
-        elif nbOfLevels == 2:
-            for thisTrial in range(len(xCoord)):
-                thisTrialxCoord = []
-                thisTrialyCoord = []
-                thisTrialHypothenuse = []
-                thisTrialxCoord += [i-toSubtractX for i in xCoord[thisTrial]]
-                thisTrialyCoord += [i-toSubtractY for i in yCoord[thisTrial]]
-                for thisValue in range(len(thisTrialxCoord)):
-                    thisTrialHypothenuse += [sqrt(thisTrialxCoord[thisValue]**2 + thisTrialyCoord[thisValue]**2)]
-                hypothenuse += [thisTrialHypothenuse]
-    
-    return hypothenuse
-
-def detectSaccades(list1D, velocityThreshold=0.01, continuousFrames=1, unidirectionnal=False, saveOffsets=False, showRebounds=False):
-    """ detect eye saccades based on a velocity threshold 
-    arguments:
-    list1D -- a 1D list of gaze coordinates
-    velocityThreshold -- the velocity threshold at which a gaze displacement is considered a saccade. Default 0.01 (degrees/ms)
-    continuousFrames -- the minimal number of continuous frames for which the threshold must be reached to consider that a saccade has started. 1= 2frames. Default 1
-    unidirectionnal -- only detect saccades towards one direction (positive or negative values only). Default False
-    saveOffsets -- output saccade offsets as a list. Default False
-    showRebounds -- decide whether to keep or not saccades of opposite direction that occur just after the offset of a previous saccade (overshoot correction). Default False 
-    """
-    allSaccadesOnsets = []
-    allSaccadesOffsets = []
-    startSearch = 0
-    endSearch = len(list1D) - 2
-    stillSaccades = True
-    
-    # as long as saccades are found
-    while stillSaccades == True:
-        positiveOnset = None
-        # look for saccades onsets and offsets
-        positiveOnset = velocitySearch(list1D, range(startSearch, endSearch), velocityThreshold, continuousFrames)
-        positiveOffset = velocitySearch(list1D, range(startSearch, endSearch), velocityThreshold, continuousFrames, stopAtFirst=False)
-        
-        if positiveOnset is None:
-            stillSaccades = False
-            continue
-        else:
-            allSaccadesOnsets += [positiveOnset]
-            allSaccadesOffsets += [positiveOffset]
-            startSearch = positiveOffset
-    
-    if unidirectionnal == False:
-        stillSaccades = True
-        startSearch = 0
-        # as long as saccades are found
-        while stillSaccades == True:
-            negativeOnset = None
-            # look for saccades onsets and offsets
-            negativeOnset = velocitySearch(list1D, range(startSearch, endSearch), -velocityThreshold, continuousFrames)
-            negativeOffset = velocitySearch(list1D, range(startSearch, endSearch), -velocityThreshold, continuousFrames, stopAtFirst=False)
-            
-            if negativeOnset is None:
-                stillSaccades = False
+        thisBlinkOnset = velocitySearch(pupilData, range(len(pupilData) -2), -velocityThreshold, continuousFrames)
+        # if no more blinks are found, check that no more rebounds are found
+        if thisBlinkOnset is None:
+            # check that no more rebounds are found, with a more laxist continuousFrames criterion and take the first reversal
+            thisReversalOnset = velocitySearch(pupilData, range(len(pupilData) -2), velocityThreshold, continuousFrames)
+           
+            # if no more reversals, stop the process
+            if thisReversalOnset is None:
+                stillBlinks = False
                 continue
+           
+            # if a rebound is found, find an offset
             else:
-                allSaccadesOnsets += [negativeOnset]
-                allSaccadesOffsets += [negativeOffset]
-                startSearch = negativeOffset
+                thisBlinkOffset = velocitySearch(pupilData, range(thisReversalOnset,len(pupilData) -2), offsetThreshold, continuousFrames, around=True)
+                endNan = thisBlinkOffset
+                
+                # if no offset is found, just find the end of the reversal
+                if thisBlinkOffset is None:
+                    thisReversalOffset = velocitySearch(pupilData, range(thisReversalOnset,len(pupilData) -2), velocityThreshold, continuousFrames, stopAtFirst=False)
+                    endNan = thisReversalOffset               
+                    # if no reversal offset is found, remove all data until the end of the trial
+                    if thisReversalOffset is None:
+                        endNan = len(pupilData)-1
+                
+                # delete all data from the reversal onset to offset
+                for thisValue in range(thisReversalOnset, endNan+1):
+                    pupilData[thisValue] = float('nan')
+                    xGazeData[thisValue] = float('nan')
+                    yGazeData[thisValue] = float('nan')
+            
+            stillBlinks = False
+            continue
+        
+        # if an onset is found, look for a rebound
+        if countBlinks == True:
+            blinkCounter += 1
+        
+        # look for a rebound in the period from blink onset to the end of the recording
+        startThisSearch = thisBlinkOnset
+        endThisSearch = len(pupilData)-1
+        
+        # if recording stops before the end of the search period, just look as far as data is available
+        if endThisSearch > len(pupilData) + 1:
+            endThisSearch = len(pupilData) - 2
+        
+        # search rebound as the last period in which the velocity of pupil size increase exceeds the given threshold
+        thisReversalOffset = velocitySearch(pupilData, range(startThisSearch, endThisSearch-1), velocityThreshold, continuousFrames, stopAtFirst=False)
+        
+        # if no temporaly close reversal has been found, start search for a blink offset from the detected onset to avoid missing offsets
+        if thisReversalOffset == None or (thisReversalOffset - thisBlinkOnset) > maxDuration:
+            thisReversalOffset = startThisSearch
+        
+        # detect blink offset
+        thisBlinkOffset = velocitySearch(pupilData, range(thisReversalOffset, endThisSearch-1), offsetThreshold, continuousFrames, around=True)
+        # if no offset is found, assume it is because it happens at the end of recording time
+        if thisBlinkOffset is None: 
+            # try to check if there is a shorter continuous flat period
+            thisBlinkOffset = velocitySearch(pupilData, range(thisReversalOffset, endThisSearch-1), offsetThreshold, continuousFrames//2, around=True)
+            if thisBlinkOffset is None: # if it doesn't work, find the last available value or delete the end of trial
+                
+            # if the last value is missing, remove all values from onset to the end of recording
+                if str(pupilData[len(pupilData)-1]) == 'nan':
+                    for thisValue in range(thisBlinkOnset,len(pupilData)):
+                        pupilData[thisValue] = float('nan')
+                    # skip the interpolation
+                    continue
+                # if the last value is available, interpolate with that value
+                else:
+                    thisBlinkOffset = len(pupilData)-1
+                
+        # define the period to reconstruct from onset and offset
+        startReconstruct = thisBlinkOnset - margin if  thisBlinkOnset - margin > 0 else 0
+        endReconstruct = thisBlinkOffset + margin if thisBlinkOffset + margin < len(pupilData) else len(pupilData) -1
+        
+        # if the loss of signal is too long, supress the data
+        if endReconstruct - startReconstruct > maxDuration:
+            for thisValue in range(startReconstruct, endReconstruct+1):
+                pupilData[thisValue] = float('nan')
+                xGazeData[thisValue] = float('nan')
+                yGazeData[thisValue] = float('nan')
+        else:
+            #interpolate pupil data, and potentially gaze coordinates
+            interpolate(pupilData, startReconstruct, endReconstruct)
+            if reconstructGaze == True:
+                interpolate(xGazeData, startReconstruct, endReconstruct)
+                interpolate(yGazeData, startReconstruct, endReconstruct)
+            elif reconstructGaze == False:
+                for thisValue in range(startReconstruct, endReconstruct+1):
+                    xGazeData[thisValue] = float('nan')
+                    yGazeData[thisValue] = float('nan')
     
-    allSaccadesOnsets.sort()
-    allSaccadesOffsets.sort()
+    return (pupilData, xGazeData, yGazeData, blinkCounter)
+
+def reconstructNan(pupilData, xGazeData, yGazeData, maxDuration=500, margin=10, reconstructGaze=False):
+    """ interpolate missing data with a cubic or linear interpolation
+    arguments:
+    pupilData --  a 1D list of pupil size values
+    xGazeData -- a 1D list of gaze x coordinates
+    yGazeData -- a 1D list of gaze y coordinates
+    margin -- the number of frames taken around the onset and offset of a missing period that are considered unreliable, default 10
+    maxDuration -- the maximal number of missing time points to interpolate, default 500
+    reconstructGaze -- interpolate gaze coordinates. If not interpolated, keeps missing values. default False
+    """
     
-    if showRebounds == False:
-        count=0
-        while count < len(allSaccadesOnsets)-1:
-            if allSaccadesOnsets[count+1] - allSaccadesOffsets[count] <= 10:
-                del allSaccadesOnsets[count+1]
-                del allSaccadesOffsets[count+1]
-            count += 1
+    stillReconstruct = True
     
-    if saveOffsets == True:
-        return (allSaccadesOnsets, allSaccadesOffsets)
-    else:
-        return allSaccadesOnsets
+    while stillReconstruct == True:
+        continuousNan = 0
+        nanOffset = None
+        nanOnset = None
+        # find continuous periods of missing values
+        for thisValue in range(len(pupilData)-1):
+            if str(pupilData[thisValue]) == 'nan':
+                nanOnset = thisValue - (continuousNan+1)
+                continuousNan += 1
+                # if it is the last missing value AND data is reconstructible, set the offset of the missing period
+                if str(pupilData[thisValue+1]) != 'nan' and continuousNan < maxDuration:
+                    nanOffset = thisValue+1
+                    break
+            else:
+                continuousNan = 0
+        # if no offset has been found, stop searching
+        if nanOffset is None:
+            stillReconstruct = False
+            continue
+        else:
+            # set limits of reconstruction
+            startReconstruct = nanOnset - margin if nanOnset - margin > 0 else 0
+            endReconstruct = nanOffset + margin if nanOffset + margin < len(pupilData) else len(pupilData)-1
+                
+            #interpolate pupil data, and potentially gaze coordinates
+            interpolate(pupilData, startReconstruct, endReconstruct)
+            if reconstructGaze == True:
+                interpolate(xGazeData, startReconstruct, endReconstruct)
+                interpolate(yGazeData, startReconstruct, endReconstruct)
+            elif reconstructGaze == False:
+                for thisValue in range(startReconstruct, endReconstruct+1):
+                    xGazeData[thisValue] = float('nan')
+                    yGazeData[thisValue] = float('nan')
+    
+    return (pupilData, xGazeData, yGazeData)
+
+def backInSamples(valueDataSet, sampleDataSet, valueIndex):
+    """ put newly computed values back in a larger sample dataset
+    arguments:
+    valueDataSet -- the newly computed values (1 or 2d list)
+    sampleDataSet -- the original large dataset in which values must be replaced (2 or 3D list)
+    valueIndex -- the list index of the original dataset in which new values must be put
+    !!! the newly computed and original lists must have the same length !!!
+    """
+    nbOfLevels = nbOfDimensions(valueDataSet)
+    
+    newDataSet = []
+    
+    if nbOfLevels == 2:
+        for thisTrial in range(len(valueDataSet)):
+            thisTrialSample = []
+            for thisFrame in range(len(valueDataSet[thisTrial])):
+                # replace the original value with the new one
+                sampleDataSet[thisTrial][thisFrame][valueIndex] = valueDataSet[thisTrial][thisFrame]
+                thisTrialSample += [sampleDataSet[thisTrial][thisFrame]]
+            newDataSet += [thisTrialSample]
+    
+    elif nbOfLevels == 1:
+        for thisFrame in range(len(valueDataSet)):
+            # replace the original value with the new one
+            sampleDataSet[thisFrame][valueIndex] = valueDataSet[thisFrame]
+            newDataSet += [sampleDataSet[thisFrame]]
+            
+    return(newDataSet)
+
+def getBaseline(dataSet, duration, retrospective = True):
+    """ compute a baseline by taking the average of a given number of time points from the beginning or the end of a list
+    arguments:
+    dataSet -- a  1D or 2D list for which baseline values have to be computed
+    duration -- the number of time points for which the mean will be computed
+    retrospective -- determine whether baseline is computed on the first frames (false) or from the last frames (true) of the list. default True
+    """
+    nbOfLevels = nbOfDimensions(dataSet)
+    
+    # convert from ms to frames
+    nbOfFrames = duration
+    
+    if nbOfLevels == 2:
+        baselineValues = []
+        if retrospective == False:
+            baselineValues += [mean(dataSet[thisTrial][0:nbOfFrames]) for thisTrial in range(len(dataSet))]
+        elif retrospective == True:
+            baselineValues += [mean(dataSet[thisTrial][len(dataSet[thisTrial])-nbOfFrames:]) for thisTrial in range(len(dataSet))]
+    
+    elif nbOfLevels == 1:
+        baselineValues = mean(dataSet[0:nbOfFrames]) if retrospective == False else mean(dataSet[len(dataSet)-nbOfFrames:])
+    
+    return baselineValues
+
+def getEventIndex(samples, events, eventMessage, eventClockIndex=1, sampleClockIndex=0):
+    """ search for the clock value of a certain event, and finds the index corresponding to it in a sample file
+    arguments:
+    samples -- a sample file
+    events -- an event file
+    eventMessage -- the message to look for in the events
+    eventClockIndex -- the column index for the clock value in the event file, default 1
+    sampleClockIndex -- the column index for the clock value in the sample file, default 0
+    """
+    # retrieve clock values for each event of interest
+    eventClockValue = []
+    for messages in events:
+        if eventMessage in messages:
+            eventClockValue += [messages[eventClockIndex]]
+    
+    # search these clock values in the samples and get their index
+    sampleClocks = getValues(samples, sampleClockIndex)
+    eventIndex = [sampleClocks.index(thisClock) for thisClock in eventClockValue]
+    
+    return eventIndex
+
+def smoothe(dataSet, window, nbOfParameters):
+    """ smoothe data using a Savitzky-Golay filter
+    arguments:
+    dataSet -- the dataset to smoothe, 1D or 2D list
+    window -- the number of time points in which a same filter is applied
+    nbOfParameters -- the number of parameters used by the filter to set a fit. 1 linear, 2 quadratic, etc.
+    """
+    nbOfLevels = nbOfDimensions(dataSet)
+    smoothed = []
+    
+    if nbOfLevels == 2:
+        for thisTrial in dataSet:
+            try:
+                thisSmoothedTrial = list(savgol_filter(thisTrial, window, nbOfParameters))
+            except: # if it doesn't work, this is because of nan
+                   # remove missing data and smoothe valid data
+                   thisSmoothedTrial = []
+                   validData = []
+                   validFrames = []
+                   validToInsert = 0
+                   for thisFrame in range(len(thisTrial)):
+                       if str(thisTrial[thisFrame]) != 'nan':
+                           validFrames += [thisFrame]
+                           validData += [thisTrial[thisFrame]]
+                   # reconstruct valid data
+                   smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
+                   # put the interpolated data back in the dataSet
+                   for thisFrame in range(len(thisTrial)):
+                       if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
+                           thisSmoothedTrial += [smoothedPart[validToInsert]]
+                           validToInsert += 1
+                       else:
+                           thisSmoothedTrial += [float('nan')]
+            smoothed += [thisSmoothedTrial]              
+    
+    
+    elif nbOfLevels == 1:
+        try:
+            smoothed = list(savgol_filter(dataSet, window, nbOfParameters))
+        except:
+            # remove missing data and smoothe valid data
+            validData = []
+            validFrames = []
+            validToInsert = 0
+            for thisFrame in range(len(dataSet)):
+                if str(dataSet[thisFrame]) != 'nan':
+                    validFrames += [thisFrame]
+                    validData += [dataSet[thisFrame]]
+            # reconstruct valid data
+            smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
+            # put the interpolated data back in the dataSet
+            for thisFrame in range(len(dataSet)):
+                if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
+                    smoothed += [smoothedPart[validToInsert]]
+                    validToInsert += 1
+                else:
+                    smoothed += [float('nan')]
+    
+    return smoothed
