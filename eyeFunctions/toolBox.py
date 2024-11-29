@@ -147,6 +147,13 @@ def isOutlier(list1D, maxSD, messageIn='notOutlier', messageOut='outlier'):
     
     return(outlierTrial)
 
+def getColumnIndex(list2D, headerName):
+    try:
+        index = list2D[0].index(headerName)
+        return index
+    except:
+        print(f'{headerName} not in list')
+
 def saveList(dataSet, fileName, charSep='\t', blockSep='\n', mode='w'):
     """ Save elements of a list of 1 or 2 dimensions in a specified file.
     arguments:
