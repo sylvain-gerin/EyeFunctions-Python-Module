@@ -55,7 +55,7 @@ def interpolate(list1D, start, stop):
     list1D[start:stop] = interpolatedData
     return None
 
-def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, sampleClockIndex=0, pupilSizeIndex=3, showInfo=False):
+def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, sampleClockIndex=0, pupilSizeIndex=3, showInfo=False, partial=False):
     """ take event and sample datasets and cluster samples based on messages in the event file
     arguments:
     samples -- the 2D list containing samples
@@ -72,10 +72,18 @@ def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, 
     endClockValue = []
     # check every messages in the event file
     for messages in events:
-        if startMessage in messages:
-            startClockValue += [messages[eventClockIndex]] # only take the clock value of onset message
-        elif endMessage in messages:
-            endClockValue += [messages[eventClockIndex]] # only take the clock value of offset message
+        if partial == False:
+            if startMessage in messages:
+                startClockValue += [messages[eventClockIndex]] # only take the clock value of onset message
+            elif endMessage in messages:
+                endClockValue += [messages[eventClockIndex]] # only take the clock value of offset message
+                
+        elif partial == True:
+            for thisMessage in messages:
+                if startMessage in thisMessage:
+                    startClockValue += [messages[eventClockIndex]]
+                elif endMessage in thisMessage:
+                    endClockValue += [messages[eventClockIndex]]
     
     # get the indexes of onset and offset messages in the sample file
     trialOnset = []
@@ -138,12 +146,12 @@ def getConditions(eventFile, independentVariable, eventMessageIndex=2):
                 conditionInfo += [messages[eventMessageIndex]]
     return conditionInfo
 
-def reconstructBlinks(pupilData, xGazeData, yGazeData, velocityThreshold=3, continuousFrames=2, offsetThreshold=1, margin=10, maxDuration=500, reconstructGaze=False, countBlinks=True):
+def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThreshold=3, continuousFrames=2, offsetThreshold=1, margin=10, maxDuration=500, reconstructGaze=False, countBlinks=True):
     """ interpolate pupil size data with a cubic or linear interpolation
     arguments:
     pupilData --  a 1D list of pupil size values
-    xGazeData -- a 1D list of x gaze coordinates
-    yGazeData -- a 1D list of y gaze coordinates
+    xGazeData -- a 1D list of x gaze coordinates if gaze is to be reconstructed default None
+    yGazeData -- a 1D list of y gaze coordinates if gaze is to be reconstructed. default None
     velocityThreshold -- the velocity threshold at which pupil size changes (both increases and decreases) indicate blinks, default 3
     continuousFrames -- the number of consecutive time points above threshold to consider that a given event occurs (blink onset, blink offset), default 2
     offsetThreshold -- the range around which velocity differences must stay to be considered as a blink offset. default 1
@@ -188,8 +196,11 @@ def reconstructBlinks(pupilData, xGazeData, yGazeData, velocityThreshold=3, cont
                 # delete all data from the reversal onset to offset
                 for thisValue in range(thisReversalOnset, endNan+1):
                     pupilData[thisValue] = float('nan')
-                    xGazeData[thisValue] = float('nan')
-                    yGazeData[thisValue] = float('nan')
+                    
+                    if xGazeData is not None:
+                        xGazeData[thisValue] = float('nan')
+                    if yGazeData is not None:
+                        yGazeData[thisValue] = float('nan')
             
             stillBlinks = False
             continue
@@ -239,27 +250,45 @@ def reconstructBlinks(pupilData, xGazeData, yGazeData, velocityThreshold=3, cont
         if endReconstruct - startReconstruct > maxDuration:
             for thisValue in range(startReconstruct, endReconstruct+1):
                 pupilData[thisValue] = float('nan')
-                xGazeData[thisValue] = float('nan')
-                yGazeData[thisValue] = float('nan')
+                    
+                if xGazeData is not None:
+                    xGazeData[thisValue] = float('nan')
+                if yGazeData is not None:
+                    yGazeData[thisValue] = float('nan')
         else:
             #interpolate pupil data, and potentially gaze coordinates
             interpolate(pupilData, startReconstruct, endReconstruct)
             if reconstructGaze == True:
-                interpolate(xGazeData, startReconstruct, endReconstruct)
-                interpolate(yGazeData, startReconstruct, endReconstruct)
+                if xGazeData is not None:
+                    interpolate(xGazeData, startReconstruct, endReconstruct)
+                if yGazeData is not None:
+                    interpolate(yGazeData, startReconstruct, endReconstruct)
+                
             elif reconstructGaze == False:
                 for thisValue in range(startReconstruct, endReconstruct+1):
-                    xGazeData[thisValue] = float('nan')
-                    yGazeData[thisValue] = float('nan')
+                    if xGazeData is not None:
+                        xGazeData[thisValue] = float('nan')
+                    if yGazeData is not None:
+                        yGazeData[thisValue] = float('nan')
     
-    return (pupilData, xGazeData, yGazeData, blinkCounter)
+    if xGazeData is None and yGazeData is None:
+        if countBlinks is False:
+            return pupilData
+        else:
+            return pupilData, blinkCounter
+    else:
+        if countBlinks is False:
+            return pupilData, xGazeData, yGazeData
+        else:
+            return pupilData, xGazeData, yGazeData, blinkCounter
+    
 
-def reconstructNan(pupilData, xGazeData, yGazeData, maxDuration=500, margin=10, reconstructGaze=False):
+def reconstructNan(pupilData, xGazeData=None, yGazeData=None, maxDuration=500, margin=10, reconstructGaze=False):
     """ interpolate missing data with a cubic or linear interpolation
     arguments:
     pupilData --  a 1D list of pupil size values
-    xGazeData -- a 1D list of gaze x coordinates
-    yGazeData -- a 1D list of gaze y coordinates
+    xGazeData -- a 1D list of x gaze coordinates if gaze is to be reconstructed default None
+    yGazeData -- a 1D list of y gaze coordinates if gaze is to be reconstructed. default None
     margin -- the number of frames taken around the onset and offset of a missing period that are considered unreliable, default 10
     maxDuration -- the maximal number of missing time points to interpolate, default 500
     reconstructGaze -- interpolate gaze coordinates. If not interpolated, keeps missing values. default False
@@ -294,14 +323,23 @@ def reconstructNan(pupilData, xGazeData, yGazeData, maxDuration=500, margin=10, 
             #interpolate pupil data, and potentially gaze coordinates
             interpolate(pupilData, startReconstruct, endReconstruct)
             if reconstructGaze == True:
-                interpolate(xGazeData, startReconstruct, endReconstruct)
-                interpolate(yGazeData, startReconstruct, endReconstruct)
+                if xGazeData is not None:
+                    interpolate(xGazeData, startReconstruct, endReconstruct)
+                if yGazeData is not None:
+                    interpolate(yGazeData, startReconstruct, endReconstruct)
+                    
             elif reconstructGaze == False:
                 for thisValue in range(startReconstruct, endReconstruct+1):
-                    xGazeData[thisValue] = float('nan')
-                    yGazeData[thisValue] = float('nan')
+                    if xGazeData is not None:
+                        xGazeData[thisValue] = float('nan')
+                    if yGazeData is not None:
+                        yGazeData[thisValue] = float('nan')
     
-    return (pupilData, xGazeData, yGazeData)
+    if xGazeData is None and yGazeData is None:
+        return pupilData
+
+    else:
+        return pupilData, xGazeData, yGazeData
 
 def backInSamples(valueDataSet, sampleDataSet, valueIndex):
     """ put newly computed values back in a larger sample dataset
