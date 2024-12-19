@@ -921,3 +921,21 @@ def detectSaccades(list1D, velocityThreshold=0.01, continuousFrames=1, unidirect
         return (allSaccadesOnsets, allSaccadesOffsets)
     else:
         return allSaccadesOnsets
+
+def makeBins(dataSet, binSize):
+    """ creates bins from a 1D or 2D list of int or float
+    arguments:
+    dataSet -- a 1D or 2D list in which bins must be made
+    binSize -- the number of frames to average per bin
+    """
+    nbOfLevels = nbOfDimensions(dataSet)
+    bins = []
+    stepSize = binSize
+    
+    if nbOfLevels == 1:
+        bins += [mean(dataSet[i:i+stepSize+1]) for i in range(0,len(dataSet), stepSize)]
+        
+    elif nbOfLevels == 2:
+        bins += [[mean(thisList[i:i+stepSize+1]) for i in range(0,len(thisList), stepSize)] for thisList in dataSet]
+    
+    return bins
