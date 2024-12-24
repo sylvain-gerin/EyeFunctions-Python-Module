@@ -440,8 +440,13 @@ def smoothe(dataSet, window, nbOfParameters):
                            validFrames += [thisFrame]
                            validData += [thisTrial[thisFrame]]
                    # reconstruct valid data
-                   smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
-                   # put the interpolated data back in the dataSet
+                   try:
+                       smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
+                   except:
+                       window = len(validData)
+                       nbOfParameters = window - 1
+                       smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
+                    # put the interpolated data back in the dataSet
                    for thisFrame in range(len(thisTrial)):
                        if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
                            thisSmoothedTrial += [smoothedPart[validToInsert]]
@@ -464,7 +469,12 @@ def smoothe(dataSet, window, nbOfParameters):
                     validFrames += [thisFrame]
                     validData += [dataSet[thisFrame]]
             # reconstruct valid data
-            smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
+            try:
+                smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
+            except:
+                window = len(validData)
+                nbOfParameters = window - 1
+                smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
             # put the interpolated data back in the dataSet
             for thisFrame in range(len(dataSet)):
                 if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
