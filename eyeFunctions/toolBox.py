@@ -1,3 +1,4 @@
+
 """ this module provides a series of functions used to handle and operate on python lists of various dimensions
 Dependencies: matplotlib.pyplot, scipy.signal, math, csv
 Author: Sylvain Gerin, sylvain.gerin@uclouvain.be 
@@ -415,21 +416,32 @@ def cluster(list2D, col, cond):
     # Return the filled list
     return clusteredList
 
-def centerList(dataSet, baselineValues=None):
+def centerList(dataSet, baselineValues=None, firstAvailable=True):
     """center lists by subtracting specified values from each value of a 1D or 2D list
     arguments:
     dataSet -- the 1D or 2D list to be centered
     baselineValues -- the values to subtract from lists. None, int, float or 1D list. If None, each list will be centered on its firts value. default None
+    firstAvailable -- if centering is made from the first value, ensures that it is not a nan. default True
     """
     
     centerFirst = True if baselineValues is None else False
-    print(centerFirst)
     
     nbOfLevels = nbOfDimensions(dataSet)
     
     if nbOfLevels == 2:
         if centerFirst == True:
-            baselineValues = [i[0] for i in dataSet]
+            if firstAvailable == False:
+                baselineValues = [i[0] for i in dataSet]
+            else:
+                baselineValues = []
+                for thisTrial in dataSet:
+                    if all(str(values) == 'nan' for values in thisTrial):
+                        baselineValues += [float('nan')]
+                    else:
+                        for thisValue in thisTrial:
+                            if str(thisValue) != 'nan':
+                                baselineValues += [thisValue]
+                                break
         else:
             if nbOfDimensions(baselineValues) == 0:
                 baselineValues = [baselineValues for i in range(len(dataSet))]
@@ -440,7 +452,16 @@ def centerList(dataSet, baselineValues=None):
     
     elif nbOfLevels == 1:
         if centerFirst == True:
-            baselineValues = dataSet[0]
+            if firstAvailable == False:
+                baselineValues = dataSet[0]
+            else:
+                if all(str(values) == 'nan' for values in dataSet):
+                    baselineValues = float('nan')
+                else:
+                    for thisValue in dataSet:
+                        if str(thisValue) != 'nan':
+                                baselineValues = thisValue
+                                break
         
         centeredList = [i - baselineValues for i in dataSet]
     
@@ -921,7 +942,7 @@ def detectSaccades(list1D, velocityThreshold=0.01, continuousFrames=1, unidirect
         return (allSaccadesOnsets, allSaccadesOffsets)
     else:
         return allSaccadesOnsets
-
+    
 def makeBins(dataSet, binSize):
     """ creates bins from a 1D or 2D list of int or float
     arguments:
