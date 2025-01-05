@@ -34,27 +34,29 @@ def pValue(list1D, observedStat, tail='two-sided'):
             thispValue = round(thispValue,3)
     return thispValue
 
-def serialTtest(cond1, cond2, kind, tail='two-sided'):
+def serialTtest(cond1, cond2, kind, tail='two-sided', omitNan=True):
     """ perform t-tests of 2 conditions for which a measure is taken a repeated number of times (time series)
     arguments:
     cond1 -- a 2D list for which the 1st dimension contains the values of all subjects at 1 time of observation, and each 2nd dimension refers to a different time of observation. If one-sample, the second2DList is the population mean
     cond2 -- the condition that will be compared to the 1st list, organized as the first one 
     kind -- the type of comparison that is being made, 'paired', 'independent', 'one-sample'
     tail -- the side of the distribution to look (if 'greater', return the p-value of cond1>cond2, if 'less', the opposite, if 'two-sided', return the p-value of a bilateral test). default 'two-sided'
+    omitNan -- if True, nan will be omitted, else, t-tests with nan values will return to nan. default True
     """
     # create the variables of interest
+    handleNan = 'omit' if omitNan == True else 'propagate'
+    
     alltValues = []
     allpValues = []
-    
     
     # perform one t-test at every time point
     for thisFrame in range(len(cond1)):
         if kind == 'paired':
-            thisFrameT,thisFrameP = ttest_rel(cond1[thisFrame],cond2[thisFrame], alternative=tail)
+            thisFrameT,thisFrameP = ttest_rel(cond1[thisFrame],cond2[thisFrame], alternative=tail, nan_policy=handleNan)
         elif kind == 'independent':
-            thisFrameT, thisFrameP = ttest_ind(cond1[thisFrame],cond2[thisFrame], alternative=tail)
+            thisFrameT, thisFrameP = ttest_ind(cond1[thisFrame],cond2[thisFrame], alternative=tail, nan_policy=handleNan)
         elif kind == 'one-sample':
-            thisFrameT, thisFrameP = ttest_1samp(cond1[thisFrame],cond2, alternative=tail)
+            thisFrameT, thisFrameP = ttest_1samp(cond1[thisFrame],cond2, alternative=tail, nan_policy=handleNan)
         
         alltValues += [thisFrameT.item()]
         allpValues += [thisFrameP.item()]
