@@ -126,6 +126,40 @@ def stringToFloat(dataSet, zeroIsNan=False):
                 
     return floatedDataset
 
+def stringToInt(dataSet, zeroIsNan=False):
+    """ convert a 1D or 2D list of values into int. If not possible, replace the value with nan
+    arguments:
+    dataSet -- a 1D or 2D list of strings
+    zeroIsNan -- decide whether '0.0' and '0' values are changed into Nan or not. Default False
+    """  
+    nbOfLevels = nbOfDimensions(dataSet)
+    intDataset = []
+    
+    if nbOfLevels == 2:
+        for thisTrial in dataSet:
+            thisTrialInted = []
+            for thisFrame in range(len(thisTrial)):
+                try:
+                    if int(thisTrial[thisFrame]) == int(0) and zeroIsNan==True:
+                        thisTrialInted[thisFrame] = float('nan')
+                    else:
+                        thisTrialInted += [int(thisTrial[thisFrame])]                   
+                except:
+                    thisTrialInted += [float('nan')]
+            intDataset += [thisTrialInted]
+    
+    elif nbOfLevels == 1:
+        for thisFrame in range(len(dataSet)):
+            try:
+                if int(dataSet[thisFrame]) == int(0) and zeroIsNan == True:
+                    intDataset[thisFrame] = float('nan')
+                else:
+                    intDataset += [int(dataSet[thisFrame])]    
+            except:
+                intDataset += [float('nan')]
+                
+    return intDataset
+
 def isOutlier(list1D, maxSD, messageIn='notOutlier', messageOut='outlier'):
     """ determines whether elements of a list are outliers or not, as defined by a chosen number of standard deviations from the mean
     arguments:
