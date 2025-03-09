@@ -994,3 +994,36 @@ def makeBins(dataSet, binSize):
         bins += [[mean(thisList[i:i+stepSize+1]) for i in range(0,len(thisList), stepSize)] for thisList in dataSet]
     
     return bins
+
+def interleaved(dataSet, split):
+    """ divide a dataSet into 'test' and 'train' rows in an interleaved fashion. 
+    Return a list of train and test sets corresponding to each interleaved possibility
+    ex: data split into 3 subsets: will return 3 training sets [0,0,1],[1,0,0],[0,1,0], 1 being test and 0 training.
+    arguments:
+    dataSet -- a 1D or 2D list that has to be divided
+    split -- the number of sets to generate
+    """
+    
+    nbOfsplits = split
+    allTrainingSets = []
+    allTestSets = []
+    # create the matrix of selection
+    for thisCurrentTraining in range(nbOfsplits):
+        selectMatrix = [0]*nbOfsplits
+        selectMatrix[thisCurrentTraining] = 1
+        # generate a list of the current selection list
+        sequence = []
+        while len(sequence) < len(dataSet):
+            sequence += selectMatrix
+        
+        # loop into the dataset and attribute subsets
+        test = []
+        training = []
+        for i,j in zip(sequence, dataSet):
+            if i == 0:
+                training += [j]
+            else:
+                test += [j]
+        allTrainingSets += [training]
+        allTestSets += [test]
+    return allTrainingSets, allTestSets
