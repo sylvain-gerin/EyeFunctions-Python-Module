@@ -180,11 +180,10 @@ def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThresho
     while stillBlinks:
         
         # Detect blink onsets based on velocity
-        
         thisBlinkOnset = velocitySearch(pupilData, range(len(pupilData) -2), -velocityThreshold, continuousFrames)
         # if no more blinks are found, check that no more rebounds are found
         if thisBlinkOnset is None:
-            # check that no more rebounds are found, with a more laxist continuousFrames criterion and take the first reversal
+            # check that no more rebounds are found, and take the first reversal
             thisReversalOnset = velocitySearch(pupilData, range(len(pupilData) -2), velocityThreshold, continuousFrames)
            
             # if no more reversals, stop the process
@@ -224,17 +223,19 @@ def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThresho
         # look for a rebound in the period from blink onset to the end of the recording
         startThisSearch = thisBlinkOnset
         endThisSearch = len(pupilData)-1
-        
-        # if recording stops before the end of the search period, just look as far as data is available
-        if endThisSearch > len(pupilData) + 1:
-            endThisSearch = len(pupilData) - 2
-        
+            
         # search rebound as the last period in which the velocity of pupil size increase exceeds the given threshold
         thisReversalOffset = velocitySearch(pupilData, range(startThisSearch, endThisSearch-1), velocityThreshold, continuousFrames, stopAtFirst=False)
         
-        # if no temporaly close reversal has been found, start search for a blink offset from the detected onset to avoid missing offsets
-        if thisReversalOffset == None or (thisReversalOffset - thisBlinkOnset) > maxDuration:
+        if thisReversalOffset == None:
             thisReversalOffset = startThisSearch
+        # if no temporaly close reversal has been found, start search for a blink offset from the detected onset to avoid missing offsets
+        elif(thisReversalOffset - thisBlinkOnset) > maxDuration:
+            thisReversalOffset = startThisSearch
+            previousReversalOffset = thisReversalOffset
+            # make sure that the algorithm doesn't get stuck by trying to reconstruc always the same blink
+            if thisReversalOffset == previousReversalOffset:
+                thisReversalOffset = velocitySearch(pupilData, range(startThisSearch, endThisSearch-1), velocityThreshold, continuousFrames, stopAtFirst=False)
         
         # detect blink offset
         thisBlinkOffset = velocitySearch(pupilData, range(thisReversalOffset, endThisSearch-1), offsetThreshold, continuousFrames, around=True)
