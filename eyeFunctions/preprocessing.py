@@ -67,7 +67,9 @@ def interpolate(list1D, start, stop):
     list1D[start:stop] = interpolatedData
     return None
 
+
 def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, sampleClockIndex=0, pupilSizeIndex=3, showInfo=False, partial=False):
+    
     """ take event and sample datasets and cluster samples based on messages in the event file
     arguments:
     samples -- the 2D list containing samples
@@ -97,15 +99,46 @@ def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, 
                 elif endMessage in thisMessage:
                     endClockValue += [messages[eventClockIndex]]
     
+    startClockValue = stringToFloat(startClockValue)
+    endClockValue = stringToFloat(endClockValue)
     # get the indexes of onset and offset messages in the sample file
     trialOnset = []
     trialOffset = []
     
-    sampleClocks = getValues(samples, sampleClockIndex)
+    sampleClocks = stringToFloat(getValues(samples, sampleClockIndex))
     
     for start, stop in zip(startClockValue, endClockValue):
-        trialOnset += [sampleClocks.index(start)]
-        trialOffset += [sampleClocks.index(stop)]
+        
+        try:
+            trialOnset += [sampleClocks.index(start)]
+        except:
+            lastFrame = max(unpack([trialOnset, trialOffset]))
+            allDiffs = [abs(sampleClocks[lastFrame] - start)]
+            
+            for thisFrame in range(lastFrame, len(sampleClocks)):
+                thisDiff = abs(sampleClocks[thisFrame] - start)
+                if thisDiff > allDiffs[len(allDiffs)-1]:
+                    trialOnset += [thisFrame-1]
+                    print(f' start clock value not found in the samples, replaced by the closest one: {allDiffs[len(allDiffs)-1]} frames away')
+                    break
+                else:                 
+                    allDiffs += [thisDiff]
+            
+        try:
+            trialOffset += [sampleClocks.index(stop)]
+        except:
+            lastFrame = max(unpack([trialOnset, trialOffset]))
+            allDiffs = [abs(sampleClocks[lastFrame] - stop)]
+            
+            for thisFrame in range(lastFrame, len(sampleClocks)):
+                thisDiff = abs(sampleClocks[thisFrame] - stop)
+                if thisDiff > allDiffs[len(allDiffs)-1]:
+                    trialOffset += [thisFrame-1]
+                    print(f'end clock value not found in the samples, replaced by the closest one: {allDiffs[len(allDiffs)-1]} frames away')
+                    break
+                else:                 
+                    allDiffs += [thisDiff]
+        
         if showInfo== True:
             print('trial', len(trialOnset))
     
@@ -175,6 +208,7 @@ def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThresho
     
     # this is a recursive process: it will continue until there are blinks to reconstruct
     blinkCounter =  None if countBlinks == False else 0
+    lastPupilSize = []
     
     stillBlinks = True
     while stillBlinks:
@@ -220,6 +254,10 @@ def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThresho
         if countBlinks == True:
             blinkCounter += 1
         
+        # in case the algorithm is stuck, start searching for blinks from the last blink reconstructed
+        if pupilData == lastPupilSize:
+            thisBlinkOnset = thisBlinkOffset
+        
         # look for a rebound in the period from blink onset to the end of the recording
         startThisSearch = thisBlinkOnset
         endThisSearch = len(pupilData)-1
@@ -232,10 +270,6 @@ def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThresho
         # if no temporaly close reversal has been found, start search for a blink offset from the detected onset to avoid missing offsets
         elif(thisReversalOffset - thisBlinkOnset) > maxDuration:
             thisReversalOffset = startThisSearch
-            previousReversalOffset = thisReversalOffset
-            # make sure that the algorithm doesn't get stuck by trying to reconstruc always the same blink
-            if thisReversalOffset == previousReversalOffset:
-                thisReversalOffset = velocitySearch(pupilData, range(startThisSearch, endThisSearch-1), velocityThreshold, continuousFrames, stopAtFirst=False)
         
         # detect blink offset
         thisBlinkOffset = velocitySearch(pupilData, range(thisReversalOffset, endThisSearch-1), offsetThreshold, continuousFrames, around=True)
@@ -258,7 +292,6 @@ def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThresho
         # define the period to reconstruct from onset and offset
         startReconstruct = thisBlinkOnset - margin if  thisBlinkOnset - margin > 0 else 0
         endReconstruct = thisBlinkOffset + margin if thisBlinkOffset + margin < len(pupilData) else len(pupilData) -1
-        
         # if the loss of signal is too long, supress the data
         if endReconstruct - startReconstruct > maxDuration:
             for thisValue in range(startReconstruct, endReconstruct+1):
@@ -283,6 +316,9 @@ def reconstructBlinks(pupilData, xGazeData=None, yGazeData=None, velocityThresho
                         xGazeData[thisValue] = float('nan')
                     if yGazeData is not None:
                         yGazeData[thisValue] = float('nan')
+    
+    # make a copy of pupil size to check whether the algorithm is stuck  
+    lastPupilSize = [i for i in pupilData]
     
     if xGazeData is None and yGazeData is None:
         if countBlinks is False:
@@ -504,3 +540,80 @@ def smoothe(dataSet, window, nbOfParameters):
                         smoothed += [float('nan')]
         
     return smoothed
+
+def correctReconstruction(pupil, xCoord=None, yCoord=None, velocityCoefficient=1.5, sizeCoefficient=1):
+    """ double check for trials in which pupil size still has velocity values below/above certain limits, indicative of badly reconstructed blinks.
+    In these trials, remove all values that are below the median - coefficient*MAD pupil size (computed without the values for which the velocity was outside of limits).
+    If the samples for which the problematic velocity values are not below the threshold, the trial is not modified.
+    Return the indexes of the modified trials
+    
+    arguments:
+    pupil -- the list of pupil sizes for the trials to modify
+    xCoord -- the list of gaze x coordinates if they have to be reconstructed as pupil size. Default None
+    yCoord -- the list of gaze y coordinates if they have to be reconstructed as pupil size. Default None
+    velocityCoefficient -- the coefficient applied to the MAD of pupil velocity to set the limits of velocities to remove. Default 1.5
+    sizeCoefficient -- the coefficient applied to the MAD of pupil size to set the threshold below which pupil sizes are deleted. Default 1
+    """
+    # check for trials in which there is still velocities outside of limits
+    modifiedTrials = []
+    for thisTrial in range(len(pupil)):
+        pupilData = pupil[thisTrial]
+        pupilVelocity = derivative(pupilData)
+        velocityMedian, velocityMAD = median(pupilVelocity), getMAD(pupilVelocity)
+        infLimit, supLimit = (velocityMedian - velocityCoefficient*velocityMAD), (velocityMedian + velocityCoefficient*velocityMAD)
+            
+        # remove the pupil sizes for which the velocity is outside of limits, and compute size parameters
+        epuredPupil = [pupilData[i] if infLimit < pupilVelocity[i] < supLimit else float('nan') for i in range(len(pupilData))]
+        pupilMedian, pupilMAD = median(epuredPupil), getMAD(epuredPupil)
+        sizeThreshold = pupilMedian - sizeCoefficient*pupilMAD
+            
+        # if the velocities that are outside of inf/sup limits are observed at low pupil sizes w.r.t median: remove them
+        remove = False
+        for thisFrame in range(len(pupilData)):
+            if pupilVelocity[thisFrame] < infLimit or pupilVelocity[thisFrame] > supLimit:
+                if pupilData[thisFrame] < sizeThreshold:
+                    remove = True
+                    break
+        
+        # if the problematic velocities were found at low sizes, remove the corresponding sizes
+        if remove:
+            modifiedTrials += [thisTrial]
+            newPupil = [i if i >= sizeThreshold else float('nan') for i in pupilData]
+            if xCoord is not None:
+                thisxCoord = xCoord[thisTrial]
+                newxCoord = [thisxCoord[i] if str(newPupil[i]) != 'nan' else float('nan') for i in range(len(thisxCoord))]
+            if yCoord is not None:
+                thisyCoord = yCoord[thisTrial]
+                newyCoord = [thisyCoord[i] if str(newPupil[i]) != 'nan' else float('nan') for i in range(len(thisyCoord))]
+            
+            pupil[thisTrial] = newPupil
+            if xCoord is not None:
+                xCoord[thisTrial] = newxCoord
+            if yCoord is not None:
+                yCoord[thisTrial] = newyCoord
+                
+    return (modifiedTrials)
+
+def checkSpikes(list2D, velocityDiffCoefficient=5):
+    """ check trials in which a difference in pupil velocity is above a certain threshold (median difference in velocity +- MAD*coefficient).
+    Return a list of trials for which the minimal pupil size observed is during one of these outlier differences in velocity.
+    Arguments:
+    list2D -- a 2D list of pupil sizes, trial per trial
+    velocityDiffCoefficient -- the coefficient to apply to the MAD of the difference in pupil velocity. Default 5
+    """
+    spikeTrials = []
+    for thisTrial in list2D:
+        velocity = derivative(thisTrial)
+        velocityDiff = derivative(velocity)
+        medianDiff, MADDiff = median(velocityDiff), getMAD(velocityDiff)
+        medianInf, medianSup = medianDiff - velocityDiffCoefficient*MADDiff, medianDiff +velocityDiffCoefficient*MADDiff
+        
+        spikes = []
+        for idx, value in enumerate(velocityDiff):
+            if idx != 1 and (value > medianSup or value < medianInf):
+                spikes += [idx]
+        
+        if thisTrial.index(min(thisTrial))+1 in spikes:
+            spikeTrials += [list2D.index(thisTrial)]
+            
+    return spikeTrials
