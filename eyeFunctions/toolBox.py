@@ -16,13 +16,14 @@ def unpack(list2D):
         unpackedList += thisList
     return unpackedList
 
-def loadFile(fileName, delimiter='\t'):
+def loadFile(fileName, delimiter='\t', encoding=None):
     """ open a file with csv.reader using a chosen delimiter
     arguments:
     fileName -- the name of the file to open
     delimiter -- the column separator. Default '\t'
+    encoding -- the name of the encoding used to decode the file
     """
-    with open(fileName, newline ='') as file:
+    with open(fileName, newline ='', encoding=encoding) as file:
         data = csv.reader(file, delimiter=delimiter)
         data = list(data)
     return data
@@ -57,6 +58,7 @@ def median(list1D):
 
 def variance(list1D):
     """ return the variance of a list of float or integers"""
+    list1D = [i for i in list1D if str(i) != 'nan']
     meanValue = mean(list1D)
     squaredDiff = 0.0
     for i in list1D:
@@ -273,6 +275,11 @@ def selectPeriod(dataSet, startPeriod, endPeriod):
     
     return epuredTrials
 
+def derivative(list1D):
+    """ compute the difference between the ith+1 and the ith value of a list. Return a list of the same length of the initial list, starting with 0"""
+    der = [0] + [(list1D[i+1]-list1D[i]) for i in range(len(list1D)-1)]
+    return der
+
 
 def velocitySearch(list1D, rangeOfSearch, eventVelocityThreshold, eventContinuousFrames, stopAtFirst=True, around=False):
     """ iterate in a given range of a list of floats or integers to find an event based on the difference of consecutive values, and return the index at which an event occured.
@@ -291,8 +298,32 @@ def velocitySearch(list1D, rangeOfSearch, eventVelocityThreshold, eventContinuou
     # loop through all items of a list
     for thisFrame in rangeOfSearch:
         # check if the difference between item n and n+1 is superior to a given threshold
+        
+        if around == True: # if the difference of consecutive values must stay within a limit
+            if hasattr(eventVelocityThreshold, '__iter__'):
+                isBetween = min(eventVelocityThreshold) <= list1D[thisFrame+1] - list1D[thisFrame] <= max(eventVelocityThreshold)
+            else:
+                isBetween = min(eventVelocityThreshold, -eventVelocityThreshold) <= list1D[thisFrame+1] - list1D[thisFrame] <= max(eventVelocityThreshold, -eventVelocityThreshold)
+                
+            if isBetween:
+                counter += 1
+                # check if the difference has been above threshold for the wanted number of consecutive frames
+                if counter >= eventContinuousFrames:
+                    if stopAtFirst == True:
+                        thisEvent = thisFrame - (counter-1)
+                        break
+                    elif stopAtFirst == False:
+                        if not isBetween:
+                            thisEvent = thisFrame +1
+                            break
+                        else:
+                            thisEvent = thisFrame +1
+            # if the velocity is below threshold, counter is reset
+            else:
+                counter = 0
+        
         # if the threshold is negative, check for values below the threshold
-        if eventVelocityThreshold < 0:
+        elif eventVelocityThreshold < 0 and around == False:
             if list1D[thisFrame+1] - list1D[thisFrame] <= eventVelocityThreshold:
                 counter += 1
                 # check if velocity has been above threshold for the wanted number of consecutive frames
@@ -311,7 +342,7 @@ def velocitySearch(list1D, rangeOfSearch, eventVelocityThreshold, eventContinuou
             else:
                 counter = 0
         
-        elif eventVelocityThreshold > 0:
+        elif eventVelocityThreshold > 0 and around == False:
             if around == False:
                 if list1D[thisFrame+1] - list1D[thisFrame] >= eventVelocityThreshold:
                     counter += 1
@@ -323,24 +354,6 @@ def velocitySearch(list1D, rangeOfSearch, eventVelocityThreshold, eventContinuou
                         elif stopAtFirst == False:
                         # if the threshold is reached and will be lost at the next iteration, take this event and stop search
                             if list1D[thisFrame+2] - list1D[thisFrame+1] < eventVelocityThreshold:
-                                thisEvent = thisFrame +1
-                                break
-                            else:
-                                thisEvent = thisFrame +1
-                # if the velocity is below threshold, counter is reset
-                else:
-                    counter = 0
-            
-            elif around == True: # if the difference of consecutive values must stay within a limit
-                if abs(list1D[thisFrame+1] - list1D[thisFrame]) <= eventVelocityThreshold:
-                    counter += 1
-                    # check if the difference has been above threshold for the wanted number of consecutive frames
-                    if counter >= eventContinuousFrames:
-                        if stopAtFirst == True:
-                            thisEvent = thisFrame - (counter-1)
-                            break
-                        elif stopAtFirst == False:
-                            if abs(list1D[thisFrame+2] - list1D[thisFrame+1]) > eventVelocityThreshold:
                                 thisEvent = thisFrame +1
                                 break
                             else:
