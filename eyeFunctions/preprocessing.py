@@ -112,7 +112,7 @@ def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, 
         try:
             trialOnset += [sampleClocks.index(start)]
         except:
-            lastFrame = max(unpack([trialOnset, trialOffset]))
+            lastFrame = max(unpack([trialOnset, trialOffset])) if len(trialOnset + trialOffset) > 0 else 0
             allDiffs = [abs(sampleClocks[lastFrame] - start)]
             
             for thisFrame in range(lastFrame, len(sampleClocks)):
@@ -121,13 +121,16 @@ def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, 
                     trialOnset += [thisFrame-1]
                     print(f' start clock value not found in the samples, replaced by the closest one: {allDiffs[len(allDiffs)-1]} frames away')
                     break
+                elif thisFrame == len(sampleClocks)-1:
+                    trialOnset += [thisFrame]
+                    print(f' start clock value not found in the samples, replaced by the closest one: {allDiffs[len(allDiffs)-1]} frames away')
                 else:                 
                     allDiffs += [thisDiff]
             
         try:
             trialOffset += [sampleClocks.index(stop)]
         except:
-            lastFrame = max(unpack([trialOnset, trialOffset]))
+            lastFrame = max(unpack([trialOnset, trialOffset])) if len(trialOnset + trialOffset) > 0 else 0
             allDiffs = [abs(sampleClocks[lastFrame] - stop)]
             
             for thisFrame in range(lastFrame, len(sampleClocks)):
@@ -136,6 +139,9 @@ def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, 
                     trialOffset += [thisFrame-1]
                     print(f'end clock value not found in the samples, replaced by the closest one: {allDiffs[len(allDiffs)-1]} frames away')
                     break
+                elif thisFrame == len(sampleClocks)-1:
+                    trialOffset += [thisFrame]
+                    print(f'end clock value not found in the samples, replaced by the closest one: {allDiffs[len(allDiffs)-1]} frames away')
                 else:                 
                     allDiffs += [thisDiff]
         
