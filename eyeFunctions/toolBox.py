@@ -590,22 +590,25 @@ def plotTrials(list2D, filename, legend=None, fill=None, color=None, show=False)
         plt.close()
     return None
 
-def setHeaders(dataSet, prefix):
+def setHeaders(dataSet, prefix, start=1):
     """loop through a 1D or 2D list to generate names corresponding to a given prefix + the index of each element in the innermost list
     arguments:
     dataSet -- a 1D or 2D list to serve as an index counter. In either case, it will take the number of items within the smaller level of list
     prefix -- the base name to give to all the names that will be generated
+    start -- the first number to be added to the prefix
     """
     nbOfLevels = nbOfDimensions(dataSet)
     
     headers = []
     
     if nbOfLevels == 2:
-        for i in range(1,len(dataSet[0])+1):
+        stop = start + len(dataSet[0])
+        for i in range(start,stop):
             headers += [f'{prefix}{str(i)}']
             
     elif nbOfLevels == 1:
-        for i in range(1,len(dataSet)+1):
+        stop = start + len(dataSet)
+        for i in range(start,stop):
             headers += [f'{prefix}{str(i)}']
     return headers
 
@@ -1001,10 +1004,10 @@ def makeBins(dataSet, binSize):
     stepSize = binSize
     
     if nbOfLevels == 1:
-        bins += [mean(dataSet[i:i+stepSize+1]) for i in range(0,len(dataSet), stepSize)]
+        bins += [mean(dataSet[i:i+stepSize]) for i in range(0,len(dataSet), stepSize)]
         
     elif nbOfLevels == 2:
-        bins += [[mean(thisList[i:i+stepSize+1]) for i in range(0,len(thisList), stepSize)] for thisList in dataSet]
+        bins += [[mean(thisList[i:i+stepSize]) for i in range(0,len(thisList), stepSize)] for thisList in dataSet]
     
     return bins
 
@@ -1040,3 +1043,18 @@ def interleaved(dataSet, split):
         allTrainingSets += [training]
         allTestSets += [test]
     return allTrainingSets, allTestSets
+
+def cohenDav(x1,x2):
+    """ compute the Cohen's Dav of two lists, see Lakens(2013) """
+    firstMean, firstSD = mean(x1), sqrt(variance(x1))
+    secondMean, secondSD = mean(x2), sqrt(variance(x2))
+    numerator = firstMean - secondMean
+    denominator = sum([firstSD, secondSD])/2
+    
+    return numerator/denominator
+
+def standardValues(list1D):
+    """ standardize the values of a list"""
+    thisMean, thisSD = mean(list1D), sqrt(variance(list1D))
+    standardizedList = [(i - thisMean)/thisSD for i in list1D]
+    return standardizedList
