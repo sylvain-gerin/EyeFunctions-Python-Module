@@ -488,62 +488,57 @@ def smoothe(dataSet, window, nbOfParameters):
             else:
                 thisTrialWindow = window
                 thisTrialParameters = nbOfParameters
+                
+                # remove missing data and smoothe valid data
+                validData = []
+                validFrames = []
+                validToInsert = 0
+                for thisFrame in range(len(thisTrial)):
+                    if str(thisTrial[thisFrame]) != 'nan':
+                        validFrames += [thisFrame]
+                        validData += [thisTrial[thisFrame]]
+                # reconstruct valid data
                 try:
-                    thisSmoothedTrial = list(savgol_filter(thisTrial, thisTrialWindow, thisTrialParameters))
+                    smoothedPart = list(savgol_filter(validData, thisTrialWindow, thisTrialParameters))
                 except:
-                    # remove missing data and smoothe valid data
-                    validData = []
-                    validFrames = []
-                    validToInsert = 0
-                    for thisFrame in range(len(thisTrial)):
-                        if str(thisTrial[thisFrame]) != 'nan':
-                            validFrames += [thisFrame]
-                            validData += [thisTrial[thisFrame]]
-                    # reconstruct valid data
-                    try:
-                        smoothedPart = list(savgol_filter(validData, thisTrialWindow, thisTrialParameters))
-                    except:
-                        thisTrialWindow = len(validData)
-                        thisTrialParameters = thisTrialWindow - 1
-                        smoothedPart = list(savgol_filter(validData, thisTrialWindow, thisTrialParameters))
-                    # put the interpolated data back in the dataSet
-                    for thisFrame in range(len(thisTrial)):
-                        if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
-                            thisSmoothedTrial += [smoothedPart[validToInsert]]
-                            validToInsert += 1
-                        else:
-                            thisSmoothedTrial += [float('nan')]
+                    thisTrialWindow = len(validData)
+                    thisTrialParameters = thisTrialWindow - 1
+                    smoothedPart = list(savgol_filter(validData, thisTrialWindow, thisTrialParameters))
+                # put the interpolated data back in the dataSet
+                for thisFrame in range(len(thisTrial)):
+                    if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
+                        thisSmoothedTrial += [smoothedPart[validToInsert]]
+                        validToInsert += 1
+                    else:
+                        thisSmoothedTrial += [float('nan')]
             smoothed += [thisSmoothedTrial]
 
     elif nbOfLevels == 1:
         if all(str(values) == 'nan' for values in dataSet):
             smoothed = dataSet
         else:
+            # remove missing data and smoothe valid data
+            validData = []
+            validFrames = []
+            validToInsert = 0
+            for thisFrame in range(len(dataSet)):
+                if str(dataSet[thisFrame]) != 'nan':
+                    validFrames += [thisFrame]
+                    validData += [dataSet[thisFrame]]
+            # reconstruct valid data
             try:
-                smoothed = list(savgol_filter(dataSet, window, nbOfParameters))
+                smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
             except:
-                # remove missing data and smoothe valid data
-                validData = []
-                validFrames = []
-                validToInsert = 0
-                for thisFrame in range(len(dataSet)):
-                    if str(dataSet[thisFrame]) != 'nan':
-                        validFrames += [thisFrame]
-                        validData += [dataSet[thisFrame]]
-                # reconstruct valid data
-                try:
-                    smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
-                except:
-                    window = len(validData)
-                    nbOfParameters = window - 1
-                    smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
-                # put the interpolated data back in the dataSet
-                for thisFrame in range(len(dataSet)):
-                    if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
-                        smoothed += [smoothedPart[validToInsert]]
-                        validToInsert += 1
-                    else:
-                        smoothed += [float('nan')]
+                window = len(validData)
+                nbOfParameters = window - 1
+                smoothedPart = list(savgol_filter(validData, window, nbOfParameters))
+            # put the interpolated data back in the dataSet
+            for thisFrame in range(len(dataSet)):
+                if validToInsert < len(validFrames) and thisFrame == validFrames[validToInsert]:
+                    smoothed += [smoothedPart[validToInsert]]
+                    validToInsert += 1
+                else:
+                    smoothed += [float('nan')]
         
     return smoothed
 
