@@ -6,4 +6,4 @@ eyeFunctions is composed by three subpackages:
 - the 'analyse.py' module contains a set of functions allowing to perform simple analyses for time series (repeated t-tests, permutations, etc).
 
 If you struggle using the module or need additional information, please send your questions to sylvain.gerin@uclouvain.be
-
+Please note that most of the functions created here are inspired from this paper: Mathôt, S., Vilotijević, A. Methods in cognitive pupillometry: Design, preprocessing, and statistical analysis. Behav Res 55, 3055–3077 (2023). https://doi.org/10.3758/s13428-022-01957-7
