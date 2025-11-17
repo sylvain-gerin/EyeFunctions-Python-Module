@@ -111,7 +111,8 @@ def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, 
         
         try:
             trialOnset += [sampleClocks.index(start)]
-        except:
+        except: # if no sample is found for the corresponding event
+            
             lastFrame = max(unpack([trialOnset, trialOffset])) if len(trialOnset + trialOffset) > 0 else 0
             allDiffs = [abs(sampleClocks[lastFrame] - start)]
             
@@ -129,7 +130,7 @@ def segmentTrials(samples, events, startMessage, endMessage, eventClockIndex=1, 
             
         try:
             trialOffset += [sampleClocks.index(stop)]
-        except:
+        except: # if no sample is found for the corresponding event
             lastFrame = max(unpack([trialOnset, trialOffset])) if len(trialOnset + trialOffset) > 0 else 0
             allDiffs = [abs(sampleClocks[lastFrame] - stop)]
             
@@ -618,3 +619,42 @@ def checkSpikes(list2D, velocityDiffCoefficient=5):
             spikeTrials += [list2D.index(thisTrial)]
             
     return spikeTrials
+
+def fillMissingFrames(samples, samplingRate, clockIdx=0):
+    """ in some cases, the eyeTracker did not record all frames even though it was supposed to. In these cases, the samples outputed by the eyeTracker may skip frames.
+    arguments:
+    samples -- the sample file, list
+    samplingRate -- the sampling rate of the eyetracker, in Hz
+    clockIdx -- the column index in which the clock values are expected, default 0
+    """
+    
+    # extract clock values and the gap between each timesStamp
+    clockValues = stringToInt(getValues(samples, clockIdx))
+    detectGap = derivative(clockValues)
+    ratio = msToFrames(samplingRate) # the expected gap between two frames
+    
+    idxToInsert = [] # idx at which frames must be added
+    framesToInsert = [] # frames of nan to be inserted in the missing spots
+        
+    # check whether there are missing frames
+    if any(i > ratio for i in detectGap):
+        # get the missing rows and reconstruct them
+        for idx, (thisGap, thisClock, thisRow) in enumerate(zip(detectGap, clockValues, samples)):
+            if thisGap > ratio:
+                newFrames = []
+                startReconstruct = clockValues[idx-1]
+                endReconstruct = clockValues[idx]
+                step = int(ratio)
+                idxToInsert += [idx]
+                
+                # create N new rows of nan, with the correct timeStamp
+                for newTime in range(startReconstruct+step, endReconstruct, step):
+                    thisNewRow = [float('nan') if thisColumn != clockIdx else newTime for thisColumn in range(len(thisRow))]
+                    newFrames += [thisNewRow]
+                framesToInsert += [newFrames]
+        
+        # insert the new rows into the dataSet
+        for thisIdx, theseFrames in reversed(list(zip(idxToInsert,framesToInsert))):
+            samples[thisIdx:thisIdx] = theseFrames
+        
+    return samples
