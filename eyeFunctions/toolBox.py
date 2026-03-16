@@ -3,11 +3,11 @@
 Dependencies: matplotlib.pyplot, scipy.signal, math, csv
 Author: Sylvain Gerin, sylvain.gerin@uclouvain.be 
 """
-
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from math import atan2, degrees
 import csv
+import numpy as np
 
 def unpack(list2D):
     """ change a 2D list into a 1D one"""
@@ -30,47 +30,22 @@ def loadFile(fileName, delimiter='\t', encoding=None):
 
 def mean(list1D):
     """ return the mean of a 1D list of float or integers. Omit Nan"""
-    list1D = [i for i in list1D if str(i) != 'nan']
-    total = sum(list1D)
-    try:
-        meanValue = total/len(list1D)
-    except:
-        meanValue = float('nan')
-    
-    return meanValue
+    return np.nanmean(list1D)
+
 
 def median(list1D):
     """ return the median of a 1D list of float or integers"""
-    list1D = [i for i in list1D if str(i) != 'nan']
-    list1D.sort()
-    
-    n = len(list1D)
-    if n % 2 != 0:
-        indexToLook = int((n+1)/2) - 1 # python starts at 0
-        medianValue = list1D[indexToLook]
-    else:
-        indexToLook = [int(n/2) - 1, int((n/2)+1) - 1]
-        valuesToLook = list1D[indexToLook[0]:indexToLook[1] + 1]
-        medianValue = mean(valuesToLook)
-    
-    return medianValue
+    return np.nanmedian(list1D)
 
 
 def variance(list1D):
     """ return the variance of a list of float or integers"""
-    list1D = [i for i in list1D if str(i) != 'nan']
-    meanValue = mean(list1D)
-    squaredDiff = 0.0
-    for i in list1D:
-        squaredDiff += (i - meanValue)**2
-    variance = squaredDiff / (len(list1D)-1)
-    return(variance)
+    return np.nanvar(list1D)
 
 def getMAD(list1D, coefficient=1.4826):
     """ return the median absolute deviation of a list of values and multiply it by a chosen coefficient (default 1.4826)"""
-    list1D = [i for i in list1D if str(i) != 'nan']
     toSubtract = median(list1D)
-    absoluteDeviations = [abs(i - toSubtract) for i in list1D]
+    absoluteDeviations = abs(np.array(list1D) - toSubtract)
     MAD = median(absoluteDeviations)
     MAD *= coefficient
     return MAD
@@ -81,17 +56,16 @@ def sqrt(x):
     return(x**0.5)
 
 def nbOfDimensions(dataSet):
-    """ inform if a list has 0, 1, 2 or 3 dimensions"""
-    if type(dataSet) is not list:
-        nbOfLevels = 0
+    """ inform of the number of dimensions of an iterable"""
+    nbOfLevels = 0
+    thisVariable = dataSet
     
-    elif type(dataSet[0]) is list:
-        if type(dataSet[0][0]) is list:
-            nbOfLevels = 3
+    while True:
+        if hasattr(thisVariable, '__iter__') and type(thisVariable) != str:
+            nbOfLevels += 1
+            thisVariable = thisVariable[0]
         else:
-            nbOfLevels = 2
-    else:
-        nbOfLevels = 1
+            break
     return nbOfLevels
 
 def stringToFloat(dataSet, zeroIsNan=False):
@@ -590,12 +564,13 @@ def plotTrials(list2D, filename, legend=None, fill=None, color=None, show=False)
         plt.close()
     return None
 
-def setHeaders(dataSet, prefix, start=1):
+def setHeaders(dataSet, prefix, start=1, leadingZeros=False):
     """loop through a 1D or 2D list to generate names corresponding to a given prefix + the index of each element in the innermost list
     arguments:
     dataSet -- a 1D or 2D list to serve as an index counter. In either case, it will take the number of items within the smaller level of list
     prefix -- the base name to give to all the names that will be generated
     start -- the first number to be added to the prefix
+    leadingZeros -- whether the number following the prefix should be with leading zeros or not. Default False
     """
     nbOfLevels = nbOfDimensions(dataSet)
     
@@ -603,13 +578,15 @@ def setHeaders(dataSet, prefix, start=1):
     
     if nbOfLevels == 2:
         stop = start + len(dataSet[0])
+        leadingZero = len(str(stop)) if leadingZeros else 0
         for i in range(start,stop):
-            headers += [f'{prefix}{str(i)}']
+            headers += [f'{prefix}{i :0{leadingZero}d}']
             
     elif nbOfLevels == 1:
         stop = start + len(dataSet)
+        leadingZero = len(str(stop)) if leadingZeros else 0
         for i in range(start,stop):
-            headers += [f'{prefix}{str(i)}']
+            headers += [f'{prefix}{i :0{leadingZero}d}']
     return headers
 
 def msToFrames(samplingRate):
