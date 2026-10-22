@@ -3,6 +3,7 @@
 Dependencies: matplotlib.pyplot, scipy.signal, math, csv
 Author: Sylvain Gerin, sylvain.gerin@uclouvain.be 
 """
+
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from math import atan2, degrees
@@ -615,29 +616,36 @@ def countNan(dataSet):
     return nanCounter
 
 def inOut(dataSet, infLimit, supLimit):
-    """ determine whether all values of a 1D or 2D list lie within the limits of given values """
+    """ determine whether all values of a 1D or 2D list lie within the limits of given values.
+    If all values inputed are nan, return nan"""
     
     nbOfLevels = nbOfDimensions(dataSet)
     
     if nbOfLevels == 1:
-        for thisValue in dataSet:
-            if str(thisValue) != 'nan':
-                if thisValue > supLimit or thisValue < infLimit:
-                    outputList = 'outOfLimits'
-                    break
-                else:
-                    outputList = 'withinLimits'
-    
-    elif nbOfLevels == 2:
-        outputList = []
-        for thisTrial in dataSet:
-            inclusionMessage = 'withinLimits'
-            for thisValue in thisTrial:
+        if all(str(thisValue)=='nan'for thisValue in dataSet):
+            outputList=float('nan')
+        else:
+            for thisValue in dataSet:
                 if str(thisValue) != 'nan':
                     if thisValue > supLimit or thisValue < infLimit:
-                        inclusionMessage = 'outOfLimits'
+                        outputList = 'outOfLimits'
                         break
-            outputList += [inclusionMessage]
+                    else:
+                        outputList = 'withinLimits'
+    
+    elif nbOfLevels == 2:
+        inclusionMessage = 'withinLimits'
+        outputList = []
+        for thisTrial in dataSet:
+            if all(str(thisValue)=='nan' for thisValue in thisTrial):
+                outputList += float('nan')
+            else:
+                for thisValue in thisTrial:
+                    if str(thisValue) != 'nan':
+                        if thisValue > supLimit or thisValue < infLimit:
+                            inclusionMessage = 'outOfLimits'
+                            break
+                outputList += [inclusionMessage]
     
     return outputList
 
