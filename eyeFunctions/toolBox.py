@@ -638,7 +638,7 @@ def inOut(dataSet, infLimit, supLimit):
         outputList = []
         for thisTrial in dataSet:
             if all(str(thisValue)=='nan' for thisValue in thisTrial):
-                outputList += float('nan')
+                outputList += [float('nan')]
             else:
                 for thisValue in thisTrial:
                     if str(thisValue) != 'nan':
