@@ -634,9 +634,9 @@ def inOut(dataSet, infLimit, supLimit):
                         outputList = 'withinLimits'
     
     elif nbOfLevels == 2:
-        inclusionMessage = 'withinLimits'
         outputList = []
         for thisTrial in dataSet:
+            inclusionMessage = 'withinLimits'
             if all(str(thisValue)=='nan' for thisValue in thisTrial):
                 outputList += [float('nan')]
             else:
